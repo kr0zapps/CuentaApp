@@ -8,24 +8,20 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
-import { useThemeColors, Spacing, Radius, FontSize } from '@/constants/Colors';
+import { useTheme, Spacing, Radius, FontSize } from '@/constants/Colors';
 import { useVentasPorPeriodo, PeriodoFiltro } from '@/store/useVentasStore';
 import { useComprasPorPeriodo } from '@/store/useComprasStore';
 import { formatCLP } from '@/utils/formatCLP';
-import { useThemeStore } from '@/store/useThemeStore';
 
 function getNombreMes(): string {
   return new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
 }
 
 export default function Dashboard() {
-  const Colors = useThemeColors();
-  const styles = useMemo(() => makeStyles(Colors), [Colors]);
+  const { Colors, isDark, theme, toggleTheme } = useTheme();
+  const styles = useMemo(() => makeStyles(Colors, isDark), [Colors, isDark]);
   const [mostrarSaldo, setMostrarSaldo] = useState(true);
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('mes');
-
-  const theme = useThemeStore((s) => s.theme);
-  const toggleAppTheme = useThemeStore((s) => s.toggleTheme);
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -102,7 +98,7 @@ export default function Dashboard() {
 
             <View style={styles.headerActions}>
               <TouchableOpacity 
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleAppTheme(); }} 
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleTheme(); }} 
                 style={styles.circleBtn}
               >
                 <Ionicons name={theme === 'light' ? "moon" : "sunny"} size={18} color={Colors.textSecondary} />
@@ -127,7 +123,7 @@ export default function Dashboard() {
           {/* HERO BALANCE CARD (Stitch Golden Mesh) */}
           <TouchableOpacity activeOpacity={0.95} onPress={toggleSaldo} style={styles.heroCardContainer}>
             <LinearGradient
-              colors={['#1F1A14', '#111114']}
+              colors={isDark ? ['#1F1A14', '#111114'] : [Colors.heroCardStart, Colors.heroCardEnd]}
               start={{ x: 0.1, y: 0.1 }}
               end={{ x: 0.9, y: 0.9 }}
               style={styles.heroCard}
@@ -139,11 +135,11 @@ export default function Dashboard() {
               <View style={styles.heroTopRow}>
                 <View style={styles.heroLabelBadge}>
                   <View style={styles.walletIconBox}>
-                    <Ionicons name="wallet-outline" size={15} color="#F59E0B" />
+                    <Ionicons name="wallet-outline" size={15} color={Colors.primary} />
                   </View>
                   <Text style={styles.heroLabelText}>Saldo disponible</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="rgba(245,158,11,0.7)" />
+                <Ionicons name="chevron-forward" size={16} color={isDark ? 'rgba(245,158,11,0.7)' : Colors.primary} />
               </View>
 
               {/* Balance Amount & Eye */}
@@ -170,8 +166,8 @@ export default function Dashboard() {
                 <Svg width="100%" height={48} viewBox="0 0 320 60" preserveAspectRatio="none">
                   <Defs>
                     <SvgGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                      <Stop offset="0%" stopColor="#F59E0B" stopOpacity={0.32} />
-                      <Stop offset="100%" stopColor="#F59E0B" stopOpacity={0.0} />
+                      <Stop offset="0%" stopColor={Colors.primary} stopOpacity={0.32} />
+                      <Stop offset="100%" stopColor={Colors.primary} stopOpacity={0.0} />
                     </SvgGradient>
                   </Defs>
                   <Path 
@@ -181,7 +177,7 @@ export default function Dashboard() {
                   <Path 
                     d="M0 48 C 45 48, 70 54, 110 40 C 150 25, 180 42, 220 32 C 260 22, 285 10, 320 12" 
                     fill="none" 
-                    stroke="#F59E0B" 
+                    stroke={Colors.primary} 
                     strokeLinecap="round" 
                     strokeWidth={2.4} 
                   />
@@ -366,66 +362,62 @@ export default function Dashboard() {
   );
 }
 
-const makeStyles = (Colors: any) => StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#0B0B0E',
+const makeStyles = (Colors: any, isDark: boolean) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bg,
   },
-  safe: { 
+  safe: {
     flex: 1,
   },
-  scroll: { 
+  scroll: {
     flex: 1,
   },
-  content: { 
-    paddingHorizontal: Spacing.lg, 
-    paddingTop: Spacing.md, 
+  content: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
     paddingBottom: 110,
   },
 
-  // HEADER (Stitch)
+  // HEADER (Stitch Design)
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.lg,
+    paddingTop: Spacing.xs,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm + 2,
+    gap: 12,
   },
   logoBadge: {
     width: 38,
     height: 38,
-    borderRadius: 11,
+    borderRadius: 12,
     padding: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
   },
   logoInner: {
     width: '100%',
     height: '100%',
-    borderRadius: 9.5,
-    backgroundColor: '#121115',
+    borderRadius: 10.5,
+    backgroundColor: Colors.bgCard,
     justifyContent: 'center',
     alignItems: 'center',
   },
   brandTitle: {
-    fontSize: FontSize.md,
+    fontSize: 17,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     letterSpacing: -0.3,
   },
   brandSubtitle: {
     fontSize: 11,
-    fontWeight: '500',
     color: Colors.textSecondary,
-    marginTop: 1,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
@@ -436,9 +428,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#131317',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -448,7 +440,7 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     borderRadius: 18,
     padding: 2,
     borderWidth: 1.5,
-    borderColor: 'rgba(245,158,11,0.4)',
+    borderColor: isDark ? 'rgba(245,158,11,0.4)' : Colors.borderFocus,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -456,14 +448,14 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 16,
-    backgroundColor: '#271E18',
+    backgroundColor: Colors.leather,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarInitials: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#FBBF24',
+    color: Colors.primary,
   },
 
   // HERO BALANCE CARD (Stitch Golden Mesh)
@@ -472,9 +464,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     borderRadius: 22,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
-    shadowColor: '#F59E0B',
-    shadowOpacity: 0.22,
+    borderColor: isDark ? 'rgba(245,158,11,0.3)' : Colors.heroCardBorder,
+    shadowColor: Colors.primary,
+    shadowOpacity: isDark ? 0.22 : 0.1,
     shadowRadius: 18,
     elevation: 6,
   },
@@ -490,7 +482,7 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(245,158,11,0.12)',
+    backgroundColor: isDark ? 'rgba(245,158,11,0.12)' : 'rgba(217,119,6,0.06)',
   },
   heroTopRow: {
     flexDirection: 'row',
@@ -507,16 +499,16 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: 'rgba(245,158,11,0.15)',
+    backgroundColor: Colors.primaryMuted,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.3)',
+    borderColor: isDark ? 'rgba(245,158,11,0.3)' : Colors.heroCardBorder,
     justifyContent: 'center',
     alignItems: 'center',
   },
   heroLabelText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FDE68A',
+    color: isDark ? '#FDE68A' : Colors.primaryDark,
     letterSpacing: 0.2,
   },
   balanceRow: {
@@ -525,7 +517,7 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   balanceAmount: {
     fontSize: 34,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     letterSpacing: -1,
   },
   comparisonRow: {
@@ -548,9 +540,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   // SEGMENTED PILL (Stitch)
   segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: '#131317',
+    backgroundColor: isDark ? '#131317' : Colors.pillBg,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 9999,
     padding: 3,
     marginBottom: Spacing.lg,
@@ -567,10 +559,10 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   segmentedText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#A1A1AA',
+    color: isDark ? '#A1A1AA' : Colors.textSecondary,
   },
   segmentedTextActive: {
-    color: '#0B0B0E',
+    color: isDark ? '#0B0B0E' : '#FFFFFF',
     fontWeight: '800',
   },
 
@@ -582,9 +574,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   },
   kpiCard: {
     flex: 1,
-    backgroundColor: '#131317',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 20,
     padding: Spacing.md + 2,
   },
@@ -634,9 +626,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   },
   quickActionCard: {
     flex: 1,
-    backgroundColor: '#131317',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 16,
     paddingVertical: 12,
     alignItems: 'center',
@@ -652,7 +644,7 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   quickActionText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#E4E4E7',
+    color: Colors.textPrimary,
   },
 
   // MOVEMENTS
@@ -668,13 +660,13 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   sectionTitle: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     letterSpacing: -0.2,
   },
   seeAllText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#F59E0B',
+    color: Colors.primary,
   },
   movementsList: {
     gap: 8,
@@ -682,9 +674,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   movementItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#131317',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 18,
     padding: 12,
   },
@@ -702,7 +694,7 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   movementTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   movementMeta: {
     fontSize: 11,
@@ -714,9 +706,9 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     fontWeight: '800',
   },
   emptyCard: {
-    backgroundColor: '#131317',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 18,
     padding: Spacing.xl,
     alignItems: 'center',

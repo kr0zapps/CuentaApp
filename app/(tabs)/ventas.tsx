@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -20,16 +20,79 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useThemeColors, Spacing, Radius, FontSize } from '@/constants/Colors';
+import { useTheme, Spacing, Radius, FontSize } from '@/constants/Colors';
 import { CampoTexto } from '@/components/ui/CampoTexto';
 import { Stepper } from '@/components/ui/Stepper';
 import { EstadoVacio } from '@/components/ui/EstadoVacio';
 import { useVentasStore, useTotalVentasMes } from '@/store/useVentasStore';
 import { useProduccionStore } from '@/store/useProduccionStore';
 import { formatCLP, parseCLP, formatCurrencyInput } from '@/utils/formatCLP';
-import { useThemeStore } from '@/store/useThemeStore';
 import { useToastStore } from '@/store/useToastStore';
 import { useConfirmStore } from '@/store/useConfirmStore';
+
+interface GroupedVentaSection {
+  title: string;
+  dateKey: string;
+  total: number;
+  count: number;
+  data: any[];
+}
+
+function groupVentasByDate(ventas: any[]): GroupedVentaSection[] {
+  const groups = new Map<string, { title: string; total: number; count: number; data: any[] }>();
+
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+  for (const item of ventas) {
+    const itemDate = new Date(item.fecha);
+    const dateKey = !isNaN(itemDate.getTime()) ? itemDate.toISOString().split('T')[0] : 'sin_fecha';
+    
+    let title = '';
+    if (dateKey === todayStr) {
+      title = 'Hoy';
+    } else if (dateKey === yesterdayStr) {
+      title = 'Ayer';
+    } else if (!isNaN(itemDate.getTime())) {
+      title = itemDate.toLocaleDateString('es-CL', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      });
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+    } else {
+      title = 'Otras fechas';
+    }
+
+    if (!groups.has(dateKey)) {
+      groups.set(dateKey, {
+        title,
+        total: 0,
+        count: 0,
+        data: [],
+      });
+    }
+
+    const group = groups.get(dateKey)!;
+    group.total += item.total || 0;
+    group.count += 1;
+    group.data.push(item);
+  }
+
+  return Array.from(groups.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([dateKey, val]) => ({
+      dateKey,
+      title: val.title,
+      total: val.total,
+      count: val.count,
+      data: val.data,
+    }));
+}
 
 const INITIAL_FORM = {
   productoId: null as string | null,
@@ -39,10 +102,9 @@ const INITIAL_FORM = {
 };
 
 export default function VentasScreen() {
-  const Colors = useThemeColors();
-  const theme = useThemeStore((s) => s.theme);
+  const { Colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => makeStyles(Colors, insets, theme), [Colors, insets, theme]);
+  const styles = useMemo(() => makeStyles(Colors, insets, isDark), [Colors, insets, isDark]);
   
   const { ventas, addVenta, removeVenta } = useVentasStore();
   const produccionStore = useProduccionStore();
@@ -153,6 +215,10 @@ export default function VentasScreen() {
     return v.producto.toLowerCase().includes(q) || (v.cliente && v.cliente.toLowerCase().includes(q));
   });
 
+  const groupedVentas = useMemo(() => {
+    return groupVentasByDate(filteredVentas);
+  }, [filteredVentas]);
+
   const getProductIcon = (nombre: string) => {
     const n = nombre.toLowerCase();
     if (n.includes('billetera') || n.includes('cartera')) return 'wallet-outline';
@@ -162,36 +228,12 @@ export default function VentasScreen() {
     return 'cash-outline';
   };
 
-  const renderItem = ({ item }: { item: any }) => (
-    <View style={styles.transactionRow}>
-      <View style={styles.transactionIconContainer}>
-        <Ionicons name={getProductIcon(item.producto) as any} size={18} color="#10B981" />
-      </View>
-      <View style={styles.transactionInfo}>
-        <Text style={styles.transactionTitle}>{item.producto}</Text>
-        <Text style={styles.transactionSubtitle}>
-          {item.cantidad}x {formatCLP(item.precioUnitario)} {item.cliente ? `• ${item.cliente}` : ''}
-        </Text>
-        <Text style={styles.dateText}>
-          {new Date(item.fecha).toLocaleString('es-CL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-        </Text>
-      </View>
-      <View style={styles.transactionRight}>
-        <Text style={styles.transactionAmount}>+{formatCLP(item.total)}</Text>
-        <TouchableOpacity
-          onPress={() => handleDelete(item)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.deleteBtn}
-        >
-          <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#08080A', '#0B0B0E']} style={StyleSheet.absoluteFill} />
+      <LinearGradient 
+        colors={isDark ? ['#08080A', '#0B0B0E'] : [Colors.bgGradientStart, Colors.bgGradientEnd]} 
+        style={StyleSheet.absoluteFill} 
+      />
 
       {/* HEADER SECTION (Stitch) */}
       <View style={styles.header}>
@@ -216,11 +258,61 @@ export default function VentasScreen() {
         </View>
       </View>
 
-      {/* SALES LIST */}
-      <FlatList
-        data={filteredVentas}
+      {/* GROUPED SALES LIST (SectionList) */}
+      <SectionList
+        sections={groupedVentas}
         keyExtractor={(item) => item.id}
-        renderItem={renderItem}
+        stickySectionHeadersEnabled={false}
+        renderSectionHeader={({ section: { title, total, count } }) => (
+          <View style={styles.sectionHeaderContainer}>
+            <View style={styles.sectionHeaderLeft}>
+              <Ionicons name="calendar-outline" size={14} color={Colors.primary} />
+              <Text style={styles.sectionTitle}>{title}</Text>
+              <View style={styles.sectionCountBadge}>
+                <Text style={styles.sectionCountText}>{count}</Text>
+              </View>
+            </View>
+            <Text style={styles.sectionTotalText}>+{formatCLP(total)}</Text>
+          </View>
+        )}
+        renderItem={({ item, index, section }) => {
+          const isFirst = index === 0;
+          const isLast = index === section.data.length - 1;
+          const isSingle = section.data.length === 1;
+
+          return (
+            <View style={[
+              styles.transactionRow,
+              isSingle && styles.transactionRowSingle,
+              !isSingle && isFirst && styles.transactionRowFirst,
+              !isSingle && isLast && styles.transactionRowLast,
+              !isLast && styles.transactionRowMiddle,
+            ]}>
+              <View style={styles.transactionIconContainer}>
+                <Ionicons name={getProductIcon(item.producto) as any} size={18} color={Colors.success} />
+              </View>
+              <View style={styles.transactionInfo}>
+                <Text style={styles.transactionTitle}>{item.producto}</Text>
+                <Text style={styles.transactionSubtitle}>
+                  {item.cantidad}x {formatCLP(item.precioUnitario)} {item.cliente ? `• ${item.cliente}` : ''}
+                </Text>
+                <Text style={styles.dateText}>
+                  {new Date(item.fecha).toLocaleString('es-CL', { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+              <View style={styles.transactionRight}>
+                <Text style={styles.transactionAmount}>+{formatCLP(item.total)}</Text>
+                <TouchableOpacity
+                  onPress={() => handleDelete(item)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.deleteBtn}
+                >
+                  <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        }}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -389,10 +481,10 @@ export default function VentasScreen() {
   );
 }
 
-const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
+const makeStyles = (Colors: any, insets: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0B0E',
+    backgroundColor: Colors.bg,
   },
 
   // HEADER (Stitch)
@@ -404,7 +496,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     letterSpacing: -0.5,
   },
   headerSubtitle: {
@@ -418,9 +510,9 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#15171E',
+    backgroundColor: Colors.bgInput,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: Colors.border,
     borderRadius: 14,
     paddingHorizontal: 12,
     height: 42,
@@ -431,32 +523,88 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 13,
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     fontWeight: '500',
   },
 
-  // LIST
+  // LIST & GROUPED SECTIONS
   listContent: {
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    paddingBottom: insets.bottom + 120,
-    gap: 10,
+    paddingTop: Spacing.xs,
+    paddingBottom: insets.bottom + 85,
+  },
+  sectionHeaderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    letterSpacing: -0.2,
+  },
+  sectionCountBadge: {
+    backgroundColor: Colors.bgInput,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  sectionCountText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  sectionTotalText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: Colors.success,
   },
 
   transactionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#131317',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
-    borderRadius: 18,
+    borderColor: Colors.cardBorder,
     padding: 12,
   },
+  transactionRowSingle: {
+    borderRadius: 16,
+    marginBottom: 8,
+  },
+  transactionRowFirst: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
+  transactionRowMiddle: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+    borderTopWidth: 0,
+    borderRadius: 0,
+  },
+  transactionRowLast: {
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderTopWidth: 0,
+    marginBottom: 8,
+  },
+
   transactionIconContainer: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
-    backgroundColor: 'rgba(16,185,129,0.1)',
+    backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : Colors.successMuted,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -467,7 +615,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   transactionTitle: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   transactionSubtitle: {
     fontSize: 11,
@@ -486,7 +634,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   transactionAmount: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#10B981',
+    color: Colors.success,
   },
   deleteBtn: {
     padding: 2,
@@ -500,7 +648,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    shadowColor: '#E7A83D',
+    shadowColor: Colors.goldCta,
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 6,
@@ -523,7 +671,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#131317',
+    backgroundColor: isDark ? '#131317' : Colors.bgCard,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: Spacing.xl,
@@ -535,7 +683,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -548,7 +696,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     letterSpacing: -0.3,
   },
   modalSubtitle: {
@@ -560,7 +708,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : Colors.bgInput,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -575,9 +723,9 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#14161D',
+    backgroundColor: isDark ? '#14161D' : Colors.bgInput,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -590,26 +738,26 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   currencyPrefix: {
     fontSize: 24,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.7)',
+    color: Colors.textSecondary,
     marginRight: 6,
   },
   amountInput: {
     flex: 1,
     fontSize: 24,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     padding: 0,
   },
   currencyBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#1E222B',
+    backgroundColor: isDark ? '#1E222B' : Colors.bgCard,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: Colors.border,
   },
   flagIcon: {
     fontSize: 13,
@@ -617,7 +765,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   currencyCode: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#E2E8F0',
+    color: Colors.textPrimary,
   },
 
   // QUICK PRODUCTS 2X2 GRID (Stitch)
@@ -637,9 +785,9 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   },
   quickCard: {
     width: '48.5%',
-    backgroundColor: '#14161D',
+    backgroundColor: isDark ? '#14161D' : Colors.bgCard,
     borderWidth: 1,
-    borderColor: '#212128',
+    borderColor: Colors.border,
     borderRadius: 16,
     padding: 10,
     flexDirection: 'row',
@@ -647,14 +795,14 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     gap: 8,
   },
   quickCardActive: {
-    borderColor: '#E7A83D',
-    backgroundColor: '#1A1814',
+    borderColor: Colors.primary,
+    backgroundColor: isDark ? '#1A1814' : Colors.primaryContainer,
   },
   quickIconBox: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#1E2029',
+    backgroundColor: Colors.cardThumbnailBg,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -664,12 +812,12 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   quickProductName: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   quickProductPrice: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#CBD5E1',
+    color: Colors.textSecondary,
     marginTop: 2,
   },
 
@@ -686,7 +834,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   quantityLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#E2E8F0',
+    color: Colors.textPrimary,
   },
   stepperWrapper: {
     width: 130,
@@ -696,7 +844,7 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
     paddingTop: Spacing.sm,
   },
   continuarBtn: {
-    backgroundColor: '#E7A83D',
+    backgroundColor: Colors.goldCta,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
@@ -705,6 +853,6 @@ const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
   continuarBtnText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0B0B0E',
+    color: isDark ? '#0B0B0E' : '#FFFFFF',
   },
 });

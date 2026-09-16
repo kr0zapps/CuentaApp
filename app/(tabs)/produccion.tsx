@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useThemeColors, Spacing, Radius, FontSize } from '@/constants/Colors';
+import { useTheme, Spacing, Radius, FontSize } from '@/constants/Colors';
 import { CampoTexto } from '@/components/ui/CampoTexto';
 import { EstadoVacio } from '@/components/ui/EstadoVacio';
 import { Stepper } from '@/components/ui/Stepper';
@@ -29,16 +29,41 @@ import { useToastStore } from '@/store/useToastStore';
 import { useConfirmStore } from '@/store/useConfirmStore';
 import { formatCLP, parseCLP, formatCurrencyInput } from '@/utils/formatCLP';
 
-const CATEGORIAS_DEFAULT = ['Todos', 'Billeteras', 'Llaveros', 'Cinturones', 'Tarjeteros', 'Otros'];
+const STOP_WORDS = new Set(['de', 'con', 'para', 'el', 'la', 'los', 'las', 'un', 'una', 'y', 'en', 'a', 'del', 'al', 'por', 'o']);
+
+function extractCategoryRoot(nombre: string): string {
+  const words = nombre.trim().split(/\s+/).filter(w => !STOP_WORDS.has(w.toLowerCase()));
+  if (words.length === 0) return 'Otros';
+  let root = words[0].charAt(0).toUpperCase() + words[0].slice(1).toLowerCase();
+  if (root.toLowerCase() === 'cinturones') root = 'Cinturón';
+  else if (root.toLowerCase() === 'tarjeteros') root = 'Tarjetero';
+  else if (root.endsWith('es') && root.length > 4) root = root.slice(0, -2);
+  else if (root.endsWith('s') && root.length > 3 && !root.endsWith('is')) root = root.slice(0, -1);
+  return root;
+}
 
 export default function ProduccionScreen() {
-  const Colors = useThemeColors();
+  const { Colors, isDark, theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = useMemo(() => makeStyles(Colors, insets), [Colors, insets]);
+  const styles = useMemo(() => makeStyles(Colors, insets, isDark), [Colors, insets, isDark]);
   const { items, addItem, updateItem, removeItem, toggleStock, updateStock } = useProduccionStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState('Todos');
+
+  // Dynamic reactive categories extracted from current items in inventory
+  const dynamicCategorias = useMemo(() => {
+    if (items.length === 0) return ['Todos'];
+    const frequencyMap = new Map<string, number>();
+    for (const item of items) {
+      const root = extractCategoryRoot(item.producto);
+      frequencyMap.set(root, (frequencyMap.get(root) || 0) + 1);
+    }
+    const sorted = Array.from(frequencyMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(entry => entry[0]);
+    return ['Todos', ...sorted];
+  }, [items]);
   
   // Create/Edit Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -147,8 +172,11 @@ export default function ProduccionScreen() {
   const filteredItems = useMemo(() => {
     let result = items;
     if (selectedCategoria !== 'Todos') {
-      const cat = selectedCategoria.toLowerCase();
-      result = result.filter(i => i.producto.toLowerCase().includes(cat));
+      const target = selectedCategoria.toLowerCase();
+      result = result.filter(i => {
+        const root = extractCategoryRoot(i.producto).toLowerCase();
+        return root === target || i.producto.toLowerCase().includes(target);
+      });
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -164,6 +192,7 @@ export default function ProduccionScreen() {
     if (n.includes('llavero')) return 'key-outline';
     if (n.includes('cinturon') || n.includes('cinturón')) return 'ribbon-outline';
     if (n.includes('tarjetero')) return 'card-outline';
+    if (n.includes('banano')) return 'bag-handle-outline';
     return 'hammer-outline';
   };
 
@@ -176,7 +205,7 @@ export default function ProduccionScreen() {
       <View style={styles.card}>
         {/* Left: Craft Icon Box (Stitch Design) */}
         <View style={styles.cardThumbnail}>
-          <Ionicons name={iconName as any} size={24} color="#F59E0B" />
+          <Ionicons name={iconName as any} size={24} color={Colors.primary} />
         </View>
 
         {/* Center: Info Column */}
@@ -218,38 +247,66 @@ export default function ProduccionScreen() {
             Cuero vacuno • Hecho a mano
           </Text>
 
-          {/* Bottom Row: Price + Integrated Inline Stepper */}
+          {/* Bottom Row: Price + Stepper + Quick Sell Button */}
           <View style={styles.cardBottomRow}>
             <Text style={styles.productPrice}>
               {item.precioVenta ? formatCLP(item.precioVenta) : 'Sin precio'}
             </Text>
 
-            {/* Stepper directly on card (Stitch Design) */}
-            <View style={styles.inlineStepper}>
-              <TouchableOpacity
-                style={styles.stepperBtn}
-                onPress={() => {
-                  if (item.cantidad > 0) {
+            <View style={styles.cardActionsRight}>
+              {/* Stepper directly on card */}
+              <View style={styles.inlineStepper}>
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
+                    if (item.cantidad > 0) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      updateStock(item.id, item.cantidad - 1);
+                    }
+                  }}
+                >
+                  <Ionicons name="remove" size={14} color={item.cantidad === 0 ? Colors.textMuted : Colors.textPrimary} />
+                </TouchableOpacity>
+
+                <Text style={[styles.stepperValue, { color: isAgotado ? Colors.danger : Colors.textPrimary }]}>
+                  {item.cantidad}
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.stepperBtn}
+                  onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    updateStock(item.id, item.cantidad - 1);
-                  }
-                }}
-              >
-                <Ionicons name="remove" size={14} color={item.cantidad === 0 ? Colors.textMuted : '#FFFFFF'} />
-              </TouchableOpacity>
+                    updateStock(item.id, item.cantidad + 1);
+                  }}
+                >
+                  <Ionicons name="add" size={14} color={Colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
 
-              <Text style={[styles.stepperValue, { color: isAgotado ? Colors.danger : '#FFFFFF' }]}>
-                {item.cantidad}
-              </Text>
-
+              {/* Quick Sell Button on each product card */}
               <TouchableOpacity
-                style={styles.stepperBtn}
+                style={[
+                  styles.cardQuickSellBtn,
+                  isAgotado && styles.cardQuickSellBtnDisabled
+                ]}
+                activeOpacity={0.8}
+                disabled={isAgotado}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  updateStock(item.id, item.cantidad + 1);
+                  if (isAgotado) {
+                    useToastStore.getState().showToast('Producto sin stock disponible.', 'error');
+                    return;
+                  }
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setSellItem(item);
+                  setSellCantidad(1);
+                  setSellCliente('');
+                  setSellModalVisible(true);
                 }}
               >
-                <Ionicons name="add" size={14} color="#FFFFFF" />
+                <Ionicons name="flash" size={13} color={isAgotado ? Colors.textMuted : (isDark ? '#0B0B0E' : '#FFFFFF')} />
+                <Text style={[styles.cardQuickSellText, isAgotado && styles.cardQuickSellTextDisabled]}>
+                  Vender
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -276,14 +333,12 @@ export default function ProduccionScreen() {
     );
   };
 
-  // Find first available item for quick sell
-  const firstAvailableItem = useMemo(() => {
-    return items.find(i => i.enStock !== false && i.cantidad > 0);
-  }, [items]);
-
   return (
     <View style={styles.container}>
-      <LinearGradient colors={['#08080A', '#0B0B0E']} style={StyleSheet.absoluteFill} />
+      <LinearGradient 
+        colors={isDark ? ['#08080A', '#0B0B0E'] : [Colors.bgGradientStart, Colors.bgGradientEnd]} 
+        style={StyleSheet.absoluteFill} 
+      />
       
       {/* HEADER (Stitch Design) */}
       <View style={styles.header}>
@@ -309,17 +364,17 @@ export default function ProduccionScreen() {
           </View>
 
           <TouchableOpacity style={styles.filterIconButton} activeOpacity={0.8} onPress={handleOpenNew}>
-            <Ionicons name="add" size={20} color="#FFFFFF" />
+            <Ionicons name="add" size={20} color={isDark ? '#FFFFFF' : Colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
-        {/* CATEGORY FILTER TABS (Stitch Design) */}
+        {/* DYNAMIC REACTIVE CATEGORY TABS */}
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false} 
           contentContainerStyle={styles.categoryScroll}
         >
-          {CATEGORIAS_DEFAULT.map((cat) => {
+          {dynamicCategorias.map((cat) => {
             const isSelected = selectedCategoria === cat;
             return (
               <TouchableOpacity
@@ -358,27 +413,6 @@ export default function ProduccionScreen() {
           />
         }
       />
-
-      {/* BOTTOM STICKY ACTION: VENDER RÁPIDO (Stitch Design) */}
-      <View style={styles.bottomStickyBar}>
-        <TouchableOpacity
-          style={styles.venderRapidoBtn}
-          activeOpacity={0.85}
-          onPress={() => {
-            if (firstAvailableItem) {
-              setSellItem(firstAvailableItem);
-              setSellCantidad(1);
-              setSellCliente('');
-              setSellModalVisible(true);
-            } else {
-              useToastStore.getState().showToast('No hay productos con stock disponible para vender.', 'error');
-            }
-          }}
-        >
-          <Ionicons name="flash" size={18} color="#0B0B0E" />
-          <Text style={styles.venderRapidoText}>Vender Rápido</Text>
-        </TouchableOpacity>
-      </View>
 
       {/* CREATE / EDIT PRODUCT MODAL */}
       <Modal
@@ -519,10 +553,10 @@ export default function ProduccionScreen() {
   );
 }
 
-const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
+const makeStyles = (Colors: any, insets: any, isDark: boolean) => StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#0B0B0E',
+    backgroundColor: Colors.bg,
   },
 
   // HEADER (Stitch)
@@ -534,7 +568,7 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     letterSpacing: -0.5,
   },
   subtitle: {
@@ -556,9 +590,9 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#15171E',
+    backgroundColor: Colors.bgInput,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: Colors.border,
     borderRadius: 14,
     paddingHorizontal: 12,
     height: 42,
@@ -567,16 +601,16 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     flex: 1,
     marginLeft: 8,
     fontSize: 13,
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     fontWeight: '500',
   },
   filterIconButton: {
     width: 42,
     height: 42,
     borderRadius: 14,
-    backgroundColor: '#15171E',
+    backgroundColor: Colors.bgInput,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: Colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -590,21 +624,21 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 7,
     borderRadius: 9999,
-    backgroundColor: '#171922',
+    backgroundColor: Colors.pillBg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: Colors.pillBorder,
   },
   categoryPillActive: {
-    backgroundColor: '#E7A83D',
-    borderColor: '#E7A83D',
+    backgroundColor: Colors.pillActiveBg,
+    borderColor: Colors.pillActiveBg,
   },
   categoryText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#D4D4D8',
+    color: Colors.pillText,
   },
   categoryTextActive: {
-    color: '#0B0B0E',
+    color: Colors.pillActiveText,
     fontWeight: '800',
   },
 
@@ -612,15 +646,15 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   listContent: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
-    paddingBottom: insets.bottom + 120,
+    paddingBottom: insets.bottom + 85,
     gap: 10,
   },
 
   // PRODUCT CARD (Stitch exact layout)
   card: {
-    backgroundColor: '#14161D',
+    backgroundColor: Colors.bgCard,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: Colors.cardBorder,
     borderRadius: 20,
     padding: 12,
     flexDirection: 'row',
@@ -631,9 +665,9 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 14,
-    backgroundColor: '#1E2029',
+    backgroundColor: Colors.cardThumbnailBg,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: Colors.cardBorder,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -650,12 +684,12 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   productName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
     flex: 1,
   },
   productSubtitle: {
     fontSize: 11,
-    color: '#A1A1AA',
+    color: Colors.textSecondary,
     marginTop: 2,
     marginBottom: 6,
   },
@@ -667,7 +701,33 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   productPrice: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.primary,
+  },
+  cardActionsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cardQuickSellBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: isDark ? Colors.goldCta : Colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  cardQuickSellBtnDisabled: {
+    backgroundColor: Colors.bgInput,
+    opacity: 0.5,
+  },
+  cardQuickSellText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: isDark ? '#0B0B0E' : '#FFFFFF',
+  },
+  cardQuickSellTextDisabled: {
+    color: Colors.textMuted,
   },
 
   // STATUS BADGE (Stitch)
@@ -696,19 +756,19 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     fontWeight: '700',
   },
   statusTextInStock: {
-    color: '#34D399',
+    color: Colors.success,
   },
   statusTextPaused: {
-    color: '#FBBF24',
+    color: Colors.warning,
   },
   statusTextSold: {
-    color: '#F87171',
+    color: Colors.danger,
   },
   pausedDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#FBBF24',
+    backgroundColor: Colors.warning,
     marginRight: 4,
   },
 
@@ -716,9 +776,9 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   inlineStepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E2029',
+    backgroundColor: isDark ? '#1E2029' : Colors.bgInput,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: Colors.border,
     borderRadius: 8,
     paddingHorizontal: 4,
     paddingVertical: 2,
@@ -739,33 +799,6 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     padding: 4,
   },
 
-  // BOTTOM STICKY ACTION (Stitch)
-  bottomStickyBar: {
-    position: 'absolute',
-    left: Spacing.lg,
-    right: Spacing.lg,
-    bottom: insets.bottom + 75,
-  },
-  venderRapidoBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#E7A83D',
-    borderRadius: 16,
-    paddingVertical: 14,
-    shadowColor: '#E7A83D',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  venderRapidoText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0B0B0E',
-    letterSpacing: 0.2,
-  },
-
   // MODALS
   modal: {
     margin: 0,
@@ -776,7 +809,7 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#131317',
+    backgroundColor: isDark ? '#131317' : Colors.bgCard,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: Spacing.xl,
@@ -788,7 +821,7 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
@@ -801,7 +834,7 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   closeBtn: {
     padding: 4,
@@ -838,7 +871,7 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
     paddingTop: Spacing.md,
   },
   saveBtn: {
-    backgroundColor: '#E7A83D',
+    backgroundColor: Colors.goldCta,
     borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
@@ -847,44 +880,44 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   saveBtnText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0B0B0E',
+    color: isDark ? '#0B0B0E' : '#FFFFFF',
   },
 
   // SELL MODAL
   sellItemBox: {
-    backgroundColor: '#1C1917',
+    backgroundColor: isDark ? '#1C1917' : Colors.bgInput,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(245,158,11,0.2)',
+    borderColor: isDark ? 'rgba(245,158,11,0.2)' : Colors.border,
   },
   sellItemName: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: Colors.textPrimary,
   },
   sellItemPrice: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FBBF24',
+    color: Colors.primary,
     marginTop: 4,
   },
   sellTotalCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#1E2029',
+    backgroundColor: isDark ? '#1E2029' : Colors.bgInput,
     borderRadius: 14,
     padding: 16,
   },
   sellTotalLabel: {
     fontSize: 13,
-    color: '#D4D4D8',
+    color: Colors.textSecondary,
     fontWeight: '600',
   },
   sellTotalAmount: {
     fontSize: 20,
     fontWeight: '900',
-    color: '#10B981',
+    color: Colors.success,
   },
 });
