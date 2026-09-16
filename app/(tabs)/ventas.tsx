@@ -11,7 +11,6 @@ import {
   TouchableWithoutFeedback,
   ScrollView,
   LayoutAnimation,
-  Alert,
   RefreshControl,
   TextInput
 } from 'react-native';
@@ -154,15 +153,24 @@ export default function VentasScreen() {
     return v.producto.toLowerCase().includes(q) || (v.cliente && v.cliente.toLowerCase().includes(q));
   });
 
+  const getProductIcon = (nombre: string) => {
+    const n = nombre.toLowerCase();
+    if (n.includes('billetera') || n.includes('cartera')) return 'wallet-outline';
+    if (n.includes('llavero')) return 'key-outline';
+    if (n.includes('cinturon') || n.includes('cinturón')) return 'ribbon-outline';
+    if (n.includes('tarjetero')) return 'card-outline';
+    return 'cash-outline';
+  };
+
   const renderItem = ({ item }: { item: any }) => (
     <View style={styles.transactionRow}>
       <View style={styles.transactionIconContainer}>
-        <Ionicons name="cash" size={20} color={Colors.bg} />
+        <Ionicons name={getProductIcon(item.producto) as any} size={18} color="#10B981" />
       </View>
       <View style={styles.transactionInfo}>
         <Text style={styles.transactionTitle}>{item.producto}</Text>
         <Text style={styles.transactionSubtitle}>
-          {item.cantidad} x {formatCLP(item.precioUnitario)} {item.cliente ? `• ${item.cliente}` : ''}
+          {item.cantidad}x {formatCLP(item.precioUnitario)} {item.cliente ? `• ${item.cliente}` : ''}
         </Text>
         <Text style={styles.dateText}>
           {new Date(item.fecha).toLocaleString('es-CL', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -170,164 +178,207 @@ export default function VentasScreen() {
       </View>
       <View style={styles.transactionRight}>
         <Text style={styles.transactionAmount}>+{formatCLP(item.total)}</Text>
-        <View style={styles.transactionActions}>
-          <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionIcon}>
-            <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => handleDelete(item)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.deleteBtn}
+        >
+          <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
+        </TouchableOpacity>
       </View>
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[Colors.bg, (Colors as any).bgGradientEnd || Colors.bg]} style={StyleSheet.absoluteFill} />
-      
-      <View style={styles.header}>
-        <Text style={styles.title}>Ventas</Text>
-        <View style={styles.balanceContainer}>
-          <Text style={styles.balanceLabel}>Ingresos del Mes</Text>
-          <Text style={styles.balanceAmount}>{formatCLP(totalMes)}</Text>
-        </View>
-      </View>
+      <LinearGradient colors={['#08080A', '#0B0B0E']} style={StyleSheet.absoluteFill} />
 
-      <View style={styles.searchSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color={Colors.textMuted} />
+      {/* HEADER SECTION (Stitch) */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Ventas</Text>
+        <Text style={styles.headerSubtitle}>Total este mes: {formatCLP(totalMes)}</Text>
+
+        {/* SEARCH BAR */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={16} color={Colors.textMuted} style={styles.searchIcon} />
           <TextInput
-            style={styles.searchInput}
             placeholder="Buscar por producto o cliente..."
             placeholderTextColor={Colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            style={styles.searchInput}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{top:10,bottom:10,left:10,right:10}}>
-              <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
+      {/* SALES LIST */}
       <FlatList
         data={filteredVentas}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
         ListEmptyComponent={
-          <EstadoVacio 
-            titulo="Sin ventas"
-            subtitulo={searchQuery ? "No se encontraron resultados" : "Registra tu primera venta para verla aquí"} 
-            icono="cash-outline" 
+          <EstadoVacio
+            icono="cash-outline"
+            titulo="No hay ventas registradas"
+            subtitulo={searchQuery ? 'No encontramos coincidencias para tu búsqueda.' : 'Toca el botón + para registrar tu primera venta.'}
           />
         }
       />
 
-      <TouchableOpacity 
+      {/* FLOATING ACTION BUTTON */}
+      <TouchableOpacity
         style={styles.fab}
         onPress={handleOpenModal}
+        activeOpacity={0.85}
       >
-        <Ionicons name="add" size={28} color={Colors.bg} />
+        <LinearGradient
+          colors={['#FBBF24', '#E7A83D']}
+          style={styles.fabGradient}
+        >
+          <Ionicons name="add" size={28} color="#0B0B0E" />
+        </LinearGradient>
       </TouchableOpacity>
 
+      {/* NUEVA VENTA MODAL (Stitch exact layout) */}
       <Modal
         isVisible={modalVisible}
         onSwipeComplete={handleCloseModal}
         swipeDirection={['down']}
         style={styles.modal}
         onBackdropPress={handleCloseModal}
-        backdropOpacity={0.5}
-        animationInTiming={300}
-        animationOutTiming={300}
+        backdropOpacity={0.65}
+        animationInTiming={280}
+        animationOutTiming={280}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardView}
+        >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
             <View style={styles.modalContent}>
               <View style={styles.dragHandle} />
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Nueva Venta</Text>
-                <TouchableOpacity onPress={handleCloseModal} style={styles.closeBtn}>
-                  <Ionicons name="close" size={24} color={Colors.textPrimary} />
+
+              {/* MODAL HEADER (Stitch) */}
+              <View style={styles.modalHeaderRow}>
+                <View>
+                  <Text style={styles.modalTitle}>Nueva venta</Text>
+                  <Text style={styles.modalSubtitle}>Selecciona un producto o ingresa un monto</Text>
+                </View>
+                <TouchableOpacity onPress={handleCloseModal} style={styles.modalCloseBtn}>
+                  <Ionicons name="close" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                
-                {itemsStock.length > 0 && (
-                  <View style={styles.fieldContainer}>
-                    <Text style={styles.fieldLabel}>SELECCIONAR DEL INVENTARIO</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stockScroll}>
-                      {itemsStock.map((item) => (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={[
-                            styles.stockCard,
-                            form.productoId === item.id && styles.stockCardSelected
-                          ]}
-                          onPress={() => handleProductSelect(item)}
-                        >
-                          <Text style={[
-                            styles.stockCardTitle,
-                            form.productoId === item.id && styles.stockCardTitleSelected
-                          ]}>{item.producto}</Text>
-                          <Text style={styles.stockCardSubtitle}>{item.cantidad} disp.</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-
-                <View style={styles.fieldContainer}>
-                  <CampoTexto
-                    label="Producto"
-                    placeholder="Ej. Bolso de Cuero"
-                    value={form.producto}
-                    onChangeText={(t) => setForm({ ...form, producto: t, productoId: null })}
-                  />
-                </View>
-
-                <View style={styles.row}>
-                  <View style={{ flex: 1 }}>
-                    <CampoTexto
-                      label="Precio Unitario"
-                      placeholder="$0"
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.modalScroll}
+              >
+                {/* AMOUNT INPUT CARD (Stitch) */}
+                <View style={styles.amountInputCard}>
+                  <View style={styles.amountFieldContainer}>
+                    <Text style={styles.currencyPrefix}>$</Text>
+                    <TextInput
+                      style={styles.amountInput}
+                      placeholder="0"
+                      placeholderTextColor="#71717A"
                       keyboardType="numeric"
                       value={form.precioUnitario}
                       onChangeText={(t) => setForm({ ...form, precioUnitario: formatCurrencyInput(t) })}
                     />
                   </View>
-                  <View style={{ flex: 1, paddingLeft: Spacing.md }}>
-                    <Text style={styles.fieldLabel}>CANTIDAD</Text>
+
+                  <View style={styles.currencyBadge}>
+                    <Text style={styles.flagIcon}>🇨🇱</Text>
+                    <Text style={styles.currencyCode}>CLP</Text>
+                  </View>
+                </View>
+
+                {/* PRODUCTOS RÁPIDOS 2X2 GRID (Stitch Design) */}
+                {itemsStock.length > 0 && (
+                  <View style={styles.quickProductsSection}>
+                    <Text style={styles.quickProductsLabel}>PRODUCTOS RÁPIDOS</Text>
+                    <View style={styles.quickGrid}>
+                      {itemsStock.slice(0, 4).map((item) => {
+                        const isSelected = form.productoId === item.id;
+                        return (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={[
+                              styles.quickCard,
+                              isSelected && styles.quickCardActive
+                            ]}
+                            onPress={() => handleProductSelect(item)}
+                            activeOpacity={0.8}
+                          >
+                            <View style={styles.quickIconBox}>
+                              <Ionicons name={getProductIcon(item.producto) as any} size={18} color="#F59E0B" />
+                            </View>
+                            <View style={styles.quickTextContainer}>
+                              <Text style={styles.quickProductName} numberOfLines={1}>{item.producto}</Text>
+                              <Text style={styles.quickProductPrice}>
+                                {item.precioVenta ? formatCLP(item.precioVenta) : 'Sin precio'}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {/* PRODUCT NAME INPUT (if custom) */}
+                <View style={styles.fieldSection}>
+                  <CampoTexto
+                    label="Nombre del producto"
+                    placeholder="Ej. Billetera clásica"
+                    value={form.producto}
+                    onChangeText={(t) => setForm({ ...form, producto: t })}
+                  />
+                </View>
+
+                {/* QUANTITY STEPPER ROW (Stitch) */}
+                <View style={styles.quantityRow}>
+                  <Text style={styles.quantityLabel}>Cantidad (Disponible: {stockDisponible})</Text>
+                  <View style={styles.stepperWrapper}>
                     <Stepper
                       value={cantidad}
                       onValueChange={setCantidad}
                       min={1}
                       max={stockDisponible}
                     />
-                    {form.productoId && (
-                      <Text style={styles.stockInfo}>Max: {stockDisponible}</Text>
-                    )}
                   </View>
                 </View>
 
-                <View style={styles.fieldContainer}>
+                {/* CLIENT INPUT */}
+                <View style={styles.fieldSection}>
                   <CampoTexto
-                    label="Cliente (Opcional)"
+                    label="Cliente (opcional)"
                     placeholder="Ej. Juan Pérez"
                     value={form.cliente}
                     onChangeText={(t) => setForm({ ...form, cliente: t })}
                   />
                 </View>
               </ScrollView>
-              
+
+              {/* BOTTOM CTA BUTTON: CONTINUAR (Stitch) */}
               <View style={styles.modalFooter}>
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-                  <Text style={styles.saveBtnText}>Registrar Venta</Text>
+                <TouchableOpacity
+                  style={styles.continuarBtn}
+                  onPress={handleSave}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.continuarBtnText}>Registrar Venta &gt;</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -338,96 +389,90 @@ export default function VentasScreen() {
   );
 }
 
-const makeStyles = (Colors: any, insets: any, theme: string) => StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    paddingTop: insets.top + Spacing.xl,
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.md,
+const makeStyles = (Colors: any, insets: any, theme: any) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0B0B0E',
   },
-  title: {
-    fontSize: FontSize.xxl,
-    fontWeight: '800',
-    color: Colors.textPrimary,
+
+  // HEADER (Stitch)
+  header: {
+    paddingTop: insets.top + Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
   },
-  balanceContainer: {
-    marginTop: Spacing.md,
-  },
-  balanceLabel: {
-    fontSize: FontSize.xs,
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
     color: Colors.textSecondary,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  balanceAmount: {
-    fontSize: FontSize.xxl,
-    fontWeight: '800',
-    color: Colors.success,
     marginTop: 2,
+    marginBottom: Spacing.md,
   },
-  searchSection: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-  },
-  searchBox: {
+
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgInput,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.lg,
-    height: 44,
+    backgroundColor: '#15171E',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 42,
+  },
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    marginLeft: Spacing.sm,
-    fontSize: FontSize.md,
-    color: Colors.textPrimary,
+    fontSize: 13,
+    color: '#FFFFFF',
     fontWeight: '500',
   },
+
+  // LIST
   listContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: insets.bottom + 120,
+    paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
+    paddingBottom: insets.bottom + 120,
+    gap: 10,
   },
-  separator: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: Colors.border,
-    marginLeft: 52,
-  },
+
   transactionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: Spacing.md,
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 18,
+    padding: 12,
   },
   transactionIconContainer: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.success,
-    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: 'rgba(16,185,129,0.1)',
     justifyContent: 'center',
-    marginRight: Spacing.md,
-    shadowColor: Colors.success,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    alignItems: 'center',
   },
   transactionInfo: {
     flex: 1,
-    justifyContent: 'center',
+    marginLeft: 12,
   },
   transactionTitle: {
-    fontSize: FontSize.md,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-    marginBottom: 2,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   transactionSubtitle: {
-    fontSize: FontSize.sm,
+    fontSize: 11,
     color: Colors.textSecondary,
-    marginBottom: 2,
+    marginTop: 2,
   },
   dateText: {
     fontSize: 10,
@@ -436,147 +481,230 @@ const makeStyles = (Colors: any, insets: any, theme: string) => StyleSheet.creat
   },
   transactionRight: {
     alignItems: 'flex-end',
-    justifyContent: 'center',
+    gap: 6,
   },
   transactionAmount: {
-    fontSize: FontSize.md,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#10B981',
   },
-  transactionActions: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
-  actionIcon: {
+  deleteBtn: {
     padding: 2,
   },
+
+  // FAB
   fab: {
     position: 'absolute',
     right: Spacing.xl,
-    bottom: insets.bottom + 80,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.primary,
+    bottom: insets.bottom + 85,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    shadowColor: '#E7A83D',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  fabGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
   },
+
+  // MODAL (Stitch exact layout)
   modal: {
-    margin: 16,
+    margin: 0,
     justifyContent: 'flex-end',
-    marginBottom: insets.bottom + 16,
   },
-  keyboardView: { flex: 1, justifyContent: 'flex-end' },
+  keyboardView: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   modalContent: {
-    backgroundColor: Colors.bgCardElevated,
-    borderRadius: Radius.xl,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 20,
-    maxHeight: '90%',
+    backgroundColor: '#131317',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    paddingBottom: insets.bottom + 20,
+    maxHeight: '88%',
   },
   dragHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignSelf: 'center',
-    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
   },
-  modalHeader: {
+  modalHeaderRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
+    alignItems: 'center',
+    marginBottom: Spacing.md,
   },
   modalTitle: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
-  closeBtn: {
-    padding: 4,
-    backgroundColor: Colors.bgInput,
-    borderRadius: 16,
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxxl,
-  },
-  fieldContainer: {
-    marginTop: Spacing.lg,
-  },
-  fieldLabel: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: Spacing.sm,
-    textTransform: 'uppercase',
-  },
-  row: {
-    flexDirection: 'row',
-    marginTop: Spacing.lg,
-  },
-  stockScroll: {
-    marginHorizontal: -Spacing.xl,
-    paddingHorizontal: Spacing.xl,
-  },
-  stockCard: {
-    backgroundColor: Colors.bgInput,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: Radius.lg,
-    marginRight: Spacing.sm,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    minWidth: 120,
-  },
-  stockCardSelected: {
-    backgroundColor: Colors.primaryMuted,
-    borderColor: Colors.primary,
-  },
-  stockCardTitle: {
-    fontSize: FontSize.sm,
-    color: Colors.textPrimary,
-    fontWeight: '600',
-  },
-  stockCardTitleSelected: {
-    color: Colors.primary,
-  },
-  stockCardSubtitle: {
-    fontSize: FontSize.xs,
+  modalSubtitle: {
+    fontSize: 11,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  stockInfo: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  modalFooter: {
-    padding: Spacing.xl,
-  },
-  saveBtn: {
-    backgroundColor: Colors.primary,
-    height: 56,
-    borderRadius: Radius.full,
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  saveBtnText: {
-    color: Colors.bg,
-    fontSize: FontSize.md,
+
+  modalScroll: {
+    gap: 16,
+    paddingBottom: Spacing.md,
+  },
+
+  // AMOUNT INPUT CARD (Stitch)
+  amountInputCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#14161D',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  amountFieldContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currencyPrefix: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
+    marginRight: 6,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    padding: 0,
+  },
+  currencyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1E222B',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  flagIcon: {
+    fontSize: 13,
+  },
+  currencyCode: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#E2E8F0',
+  },
+
+  // QUICK PRODUCTS 2X2 GRID (Stitch)
+  quickProductsSection: {
+    gap: 8,
+  },
+  quickProductsLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.textSecondary,
+    letterSpacing: 0.8,
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  quickCard: {
+    width: '48.5%',
+    backgroundColor: '#14161D',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 16,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickCardActive: {
+    borderColor: '#E7A83D',
+    backgroundColor: '#1A1814',
+  },
+  quickIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#1E2029',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickTextContainer: {
+    flex: 1,
+  },
+  quickProductName: {
+    fontSize: 12,
     fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  quickProductPrice: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#CBD5E1',
+    marginTop: 2,
+  },
+
+  fieldSection: {
+    gap: 6,
+  },
+
+  quantityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  quantityLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E2E8F0',
+  },
+  stepperWrapper: {
+    width: 130,
+  },
+
+  modalFooter: {
+    paddingTop: Spacing.sm,
+  },
+  continuarBtn: {
+    backgroundColor: '#E7A83D',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  continuarBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0B0B0E',
   },
 });

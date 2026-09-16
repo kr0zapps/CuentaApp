@@ -11,7 +11,6 @@ import {
   TouchableWithoutFeedback,
   ScrollView,
   LayoutAnimation,
-  Alert,
   TextInput
 } from 'react-native';
 import Modal from 'react-native-modal';
@@ -30,6 +29,8 @@ import { useToastStore } from '@/store/useToastStore';
 import { useConfirmStore } from '@/store/useConfirmStore';
 import { formatCLP, parseCLP, formatCurrencyInput } from '@/utils/formatCLP';
 
+const CATEGORIAS_DEFAULT = ['Todos', 'Billeteras', 'Llaveros', 'Cinturones', 'Tarjeteros', 'Otros'];
+
 export default function ProduccionScreen() {
   const Colors = useThemeColors();
   const insets = useSafeAreaInsets();
@@ -37,15 +38,15 @@ export default function ProduccionScreen() {
   const { items, addItem, updateItem, removeItem, toggleStock, updateStock } = useProduccionStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterMode, setFilterMode] = useState<'todos' | 'en_stock'>('todos');
+  const [selectedCategoria, setSelectedCategoria] = useState('Todos');
   
   // Create/Edit Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ producto: '', precioVenta: '' });
+  const [form, setForm] = useState({ producto: '', precioVenta: '', categoria: 'Billeteras' });
   const [cantidad, setCantidad] = useState(1);
 
-  // Sell Modal State
+  // Quick Sell Modal State
   const [sellModalVisible, setSellModalVisible] = useState(false);
   const [sellItem, setSellItem] = useState<any>(null);
   const [sellCantidad, setSellCantidad] = useState(1);
@@ -54,7 +55,7 @@ export default function ProduccionScreen() {
   const handleOpenNew = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditId(null);
-    setForm({ producto: '', precioVenta: '' });
+    setForm({ producto: '', precioVenta: '', categoria: 'Billeteras' });
     setCantidad(1);
     setModalVisible(true);
   };
@@ -145,154 +146,204 @@ export default function ProduccionScreen() {
 
   const filteredItems = useMemo(() => {
     let result = items;
-    if (filterMode === 'en_stock') {
-      result = result.filter(i => i.enStock !== false && i.cantidad > 0);
+    if (selectedCategoria !== 'Todos') {
+      const cat = selectedCategoria.toLowerCase();
+      result = result.filter(i => i.producto.toLowerCase().includes(cat));
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(i => i.producto.toLowerCase().includes(q));
     }
     return result;
-  }, [items, filterMode, searchQuery]);
+  }, [items, selectedCategoria, searchQuery]);
+
+  // Helper to pick a craft icon based on product name
+  const getProductIcon = (nombre: string) => {
+    const n = nombre.toLowerCase();
+    if (n.includes('billetera') || n.includes('cartera')) return 'wallet-outline';
+    if (n.includes('llavero')) return 'key-outline';
+    if (n.includes('cinturon') || n.includes('cinturón')) return 'ribbon-outline';
+    if (n.includes('tarjetero')) return 'card-outline';
+    return 'hammer-outline';
+  };
 
   const renderItem = ({ item }: { item: any }) => {
-    const isLowStock = item.cantidad <= 2 && item.enStock;
+    const isAgotado = item.cantidad <= 0;
+    const isDisponible = !isAgotado && item.enStock !== false;
+    const iconName = getProductIcon(item.producto);
+
     return (
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        {/* Left: Craft Icon Box (Stitch Design) */}
+        <View style={styles.cardThumbnail}>
+          <Ionicons name={iconName as any} size={24} color="#F59E0B" />
+        </View>
+
+        {/* Center: Info Column */}
+        <View style={styles.cardCenter}>
           <View style={styles.cardTitleRow}>
-            <View>
-              <Text style={styles.productName}>{item.producto}</Text>
-              <Text style={styles.dateText}>Actualizado: {new Date(item.fecha).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</Text>
-            </View>
-            {isLowStock && (
-              <View style={styles.badgeLowStock}>
-                <Text style={styles.badgeLowStockText}>Bajo</Text>
-              </View>
-            )}
+            <Text style={styles.productName} numberOfLines={1}>{item.producto}</Text>
+            
+            {/* Status Pill Badge */}
+            <TouchableOpacity 
+              style={[
+                styles.statusBadge,
+                isAgotado 
+                  ? styles.statusBadgeSold 
+                  : (isDisponible ? styles.statusBadgeInStock : styles.statusBadgePaused)
+              ]}
+              onPress={() => {
+                if (isAgotado) {
+                  useToastStore.getState().showToast('Producto con 0 stock. Usa el "+" para agregar unidades.', 'error');
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                  return;
+                }
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                toggleStock(item.id);
+              }}
+            >
+              {!isAgotado && !isDisponible && <View style={styles.pausedDot} />}
+              <Text style={[
+                styles.statusBadgeText,
+                isAgotado 
+                  ? styles.statusTextSold 
+                  : (isDisponible ? styles.statusTextInStock : styles.statusTextPaused)
+              ]}>
+                {isAgotado ? 'Agotado' : (isDisponible ? 'Disponible' : 'Pausado')}
+              </Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={() => {
+
+          <Text style={styles.productSubtitle} numberOfLines={1}>
+            Cuero vacuno • Hecho a mano
+          </Text>
+
+          {/* Bottom Row: Price + Integrated Inline Stepper */}
+          <View style={styles.cardBottomRow}>
+            <Text style={styles.productPrice}>
+              {item.precioVenta ? formatCLP(item.precioVenta) : 'Sin precio'}
+            </Text>
+
+            {/* Stepper directly on card (Stitch Design) */}
+            <View style={styles.inlineStepper}>
+              <TouchableOpacity
+                style={styles.stepperBtn}
+                onPress={() => {
+                  if (item.cantidad > 0) {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    updateStock(item.id, item.cantidad - 1);
+                  }
+                }}
+              >
+                <Ionicons name="remove" size={14} color={item.cantidad === 0 ? Colors.textMuted : '#FFFFFF'} />
+              </TouchableOpacity>
+
+              <Text style={[styles.stepperValue, { color: isAgotado ? Colors.danger : '#FFFFFF' }]}>
+                {item.cantidad}
+              </Text>
+
+              <TouchableOpacity
+                style={styles.stepperBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  updateStock(item.id, item.cantidad + 1);
+                }}
+              >
+                <Ionicons name="add" size={14} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* Action Menu (Edit / Delete) */}
+        <TouchableOpacity
+          style={styles.editBtn}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          onPress={() => {
             setEditId(item.id);
             setForm({
               producto: item.producto,
               precioVenta: item.precioVenta ? item.precioVenta.toString() : '',
+              categoria: 'Billeteras',
             });
             setCantidad(item.cantidad);
             setModalVisible(true);
-          }} hitSlop={{top:10,right:10,bottom:10,left:10}}>
-            <Ionicons name="ellipsis-horizontal" size={20} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.cardMetrics}>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>PRECIO</Text>
-            <Text style={styles.metricValue}>{item.precioVenta ? formatCLP(item.precioVenta) : '--'}</Text>
-          </View>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>STOCK</Text>
-            <Text style={[styles.metricValue, { color: item.cantidad === 0 ? Colors.danger : Colors.textPrimary }]}>{item.cantidad}</Text>
-          </View>
-          <View style={[styles.metricItem, { alignItems: 'flex-end' }]}>
-            <Text style={styles.metricLabel}>ESTADO</Text>
-            {(() => {
-              const isAgotado = item.cantidad <= 0;
-              const isDisponible = !isAgotado && item.enStock !== false;
-              return (
-                <TouchableOpacity 
-                  style={[
-                    styles.statusToggle, 
-                    isAgotado ? styles.statusSold : (isDisponible ? styles.statusInStock : styles.statusPaused)
-                  ]}
-                  onPress={() => {
-                    if (isAgotado) {
-                      useToastStore.getState().showToast('Producto con 0 stock. Edítalo para reponer unidades.', 'error');
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-                      return;
-                    }
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    toggleStock(item.id);
-                  }}>
-                  <Text style={[
-                    styles.statusText, 
-                    isAgotado ? styles.statusTextSold : (isDisponible ? styles.statusTextInStock : styles.statusTextPaused)
-                  ]}>
-                    {isAgotado ? 'Agotado' : (isDisponible ? 'Disponible' : 'Pausado')}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })()}
-          </View>
-        </View>
-
-        <View style={styles.cardActions}>
-          {item.enStock !== false && item.cantidad > 0 ? (
-            <TouchableOpacity 
-              style={styles.venderBtn}
-              onPress={() => {
-                setSellItem(item);
-                setSellCantidad(1);
-                setSellCliente('');
-                setSellModalVisible(true);
-              }}>
-              <Text style={styles.venderBtnText}>Vender Rápidamente</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.emptyActionSpace} />
-          )}
-          
-          <View style={styles.secondaryActions}>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => handleDuplicate(item)}>
-              <Ionicons name="copy-outline" size={18} color={Colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => handleDelete(item.id)}>
-              <Ionicons name="trash-outline" size={18} color={Colors.danger} />
-            </TouchableOpacity>
-          </View>
-        </View>
+          }}
+        >
+          <Ionicons name="ellipsis-vertical" size={16} color={Colors.textMuted} />
+        </TouchableOpacity>
       </View>
     );
   };
 
+  // Find first available item for quick sell
+  const firstAvailableItem = useMemo(() => {
+    return items.find(i => i.enStock !== false && i.cantidad > 0);
+  }, [items]);
+
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[Colors.bg, (Colors as any).bgGradientEnd || Colors.bg]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#08080A', '#0B0B0E']} style={StyleSheet.absoluteFill} />
       
+      {/* HEADER (Stitch Design) */}
       <View style={styles.header}>
         <Text style={styles.title}>Inventario</Text>
-        <Text style={styles.subtitle}>{items.length} productos registrados</Text>
-      </View>
+        <Text style={styles.subtitle}>Gestiona tu stock de productos</Text>
 
-      <View style={styles.searchSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search" size={20} color={Colors.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar productos..."
-            placeholderTextColor={Colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{top:10,bottom:10,left:10,right:10}}>
-              <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.filtersRow}>
-          <TouchableOpacity 
-            style={[styles.filterPill, filterMode === 'todos' && styles.filterPillActive]}
-            onPress={() => setFilterMode('todos')}>
-            <Text style={[styles.filterText, filterMode === 'todos' && styles.filterTextActive]}>Todos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.filterPill, filterMode === 'en_stock' && styles.filterPillActive]}
-            onPress={() => setFilterMode('en_stock')}>
-            <Text style={[styles.filterText, filterMode === 'en_stock' && styles.filterTextActive]}>Disponibles</Text>
+        {/* SEARCH AND FILTER BAR */}
+        <View style={styles.searchBarRow}>
+          <View style={styles.searchBox}>
+            <Ionicons name="search" size={16} color={Colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar producto..."
+              placeholderTextColor={Colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TouchableOpacity style={styles.filterIconButton} activeOpacity={0.8} onPress={handleOpenNew}>
+            <Ionicons name="add" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+
+        {/* CATEGORY FILTER TABS (Stitch Design) */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.categoryScroll}
+        >
+          {CATEGORIAS_DEFAULT.map((cat) => {
+            const isSelected = selectedCategoria === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryPill,
+                  isSelected && styles.categoryPillActive
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSelectedCategoria(cat);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
+      {/* PRODUCT LIST */}
       <FlatList
         data={filteredItems}
         keyExtractor={i => i.id}
@@ -308,20 +359,37 @@ export default function ProduccionScreen() {
         }
       />
 
-      <TouchableOpacity style={styles.fab} onPress={handleOpenNew}>
-        <Ionicons name="add" size={28} color={Colors.bg} />
-      </TouchableOpacity>
+      {/* BOTTOM STICKY ACTION: VENDER RÁPIDO (Stitch Design) */}
+      <View style={styles.bottomStickyBar}>
+        <TouchableOpacity
+          style={styles.venderRapidoBtn}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (firstAvailableItem) {
+              setSellItem(firstAvailableItem);
+              setSellCantidad(1);
+              setSellCliente('');
+              setSellModalVisible(true);
+            } else {
+              useToastStore.getState().showToast('No hay productos con stock disponible para vender.', 'error');
+            }
+          }}
+        >
+          <Ionicons name="flash" size={18} color="#0B0B0E" />
+          <Text style={styles.venderRapidoText}>Vender Rápido</Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* CREATE/EDIT MODAL */}
+      {/* CREATE / EDIT PRODUCT MODAL */}
       <Modal
         isVisible={modalVisible}
         onSwipeComplete={handleClose}
         swipeDirection={['down']}
         style={styles.modal}
         onBackdropPress={handleClose}
-        backdropOpacity={0.5}
-        animationInTiming={300}
-        animationOutTiming={300}
+        backdropOpacity={0.6}
+        animationInTiming={280}
+        animationOutTiming={280}
       >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -330,40 +398,49 @@ export default function ProduccionScreen() {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{editId ? 'Editar Producto' : 'Nuevo Producto'}</Text>
                 <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-                  <Ionicons name="close" size={24} color={Colors.textPrimary} />
+                  <Ionicons name="close" size={22} color={Colors.textPrimary} />
                 </TouchableOpacity>
               </View>
+
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                 <View style={styles.fieldContainer}>
                   <CampoTexto
                     label="Nombre del Producto"
-                    placeholder="Ej. Cartera de Cuero"
+                    placeholder="Ej. Billetera clásica"
                     value={form.producto}
                     onChangeText={(t) => setForm({ ...form, producto: t })}
                   />
                 </View>
-                <View style={styles.row}>
-                  <View style={{ flex: 1 }}>
-                    <CampoTexto
-                      label="Precio Venta"
-                      placeholder="$0"
-                      keyboardType="numeric"
-                      value={form.precioVenta}
-                      onChangeText={(t) => setForm({ ...form, precioVenta: formatCurrencyInput(t) })}
-                    />
-                  </View>
-                  <View style={{ flex: 1, paddingLeft: Spacing.md }}>
-                    <Text style={styles.fieldLabel}>STOCK INICIAL</Text>
-                    <View style={styles.stepperWrapper}>
-                      <Stepper
-                        value={cantidad}
-                        onValueChange={setCantidad}
-                        min={0}
-                      />
-                    </View>
-                  </View>
+
+                <View style={styles.fieldContainer}>
+                  <CampoTexto
+                    label="Precio de Venta"
+                    placeholder="$0"
+                    keyboardType="numeric"
+                    value={form.precioVenta}
+                    onChangeText={(t) => setForm({ ...form, precioVenta: formatCurrencyInput(t) })}
+                  />
                 </View>
+
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>STOCK INICIAL</Text>
+                  <Stepper
+                    value={cantidad}
+                    onValueChange={setCantidad}
+                    min={0}
+                  />
+                </View>
+
+                {editId && (
+                  <View style={styles.dangerZone}>
+                    <TouchableOpacity style={styles.deleteProductBtn} onPress={() => { handleClose(); handleDelete(editId); }}>
+                      <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                      <Text style={styles.deleteProductText}>Eliminar producto</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </ScrollView>
+
               <View style={styles.modalFooter}>
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
                   <Text style={styles.saveBtnText}>{editId ? 'Guardar Cambios' : 'Crear Producto'}</Text>
@@ -381,7 +458,7 @@ export default function ProduccionScreen() {
         swipeDirection={['down']}
         style={styles.modal}
         onBackdropPress={() => setSellModalVisible(false)}
-        backdropOpacity={0.5}
+        backdropOpacity={0.6}
       >
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardView}>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -390,17 +467,21 @@ export default function ProduccionScreen() {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Venta Rápida</Text>
                 <TouchableOpacity onPress={() => setSellModalVisible(false)} style={styles.closeBtn}>
-                  <Ionicons name="close" size={24} color={Colors.textPrimary} />
+                  <Ionicons name="close" size={22} color={Colors.textPrimary} />
                 </TouchableOpacity>
               </View>
+
               {sellItem && (
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                  <View style={styles.sellItemHeader}>
+                  <View style={styles.sellItemBox}>
                     <Text style={styles.sellItemName}>{sellItem.producto}</Text>
-                    <Text style={styles.sellItemPrice}>{sellItem.precioVenta ? formatCLP(sellItem.precioVenta) : 'Sin precio'}</Text>
+                    <Text style={styles.sellItemPrice}>
+                      {sellItem.precioVenta ? formatCLP(sellItem.precioVenta) : 'Sin precio'}
+                    </Text>
                   </View>
+
                   <View style={styles.fieldContainer}>
-                    <Text style={styles.fieldLabel}>CANTIDAD A VENDER (Max: {sellItem.cantidad})</Text>
+                    <Text style={styles.fieldLabel}>CANTIDAD A VENDER (Stock: {sellItem.cantidad})</Text>
                     <Stepper
                       value={sellCantidad}
                       onValueChange={setSellCantidad}
@@ -408,6 +489,7 @@ export default function ProduccionScreen() {
                       max={sellItem.cantidad}
                     />
                   </View>
+
                   <View style={styles.fieldContainer}>
                     <CampoTexto
                       label="Cliente (Opcional)"
@@ -416,12 +498,14 @@ export default function ProduccionScreen() {
                       onChangeText={setSellCliente}
                     />
                   </View>
-                  <View style={styles.sellTotalRow}>
-                    <Text style={styles.sellTotalLabel}>Total Venta:</Text>
+
+                  <View style={styles.sellTotalCard}>
+                    <Text style={styles.sellTotalLabel}>Total a cobrar:</Text>
                     <Text style={styles.sellTotalAmount}>{formatCLP(sellCantidad * (sellItem.precioVenta || 0))}</Text>
                   </View>
                 </ScrollView>
               )}
+
               <View style={styles.modalFooter}>
                 <TouchableOpacity style={styles.saveBtn} onPress={handleSell}>
                   <Text style={styles.saveBtnText}>Confirmar Venta</Text>
@@ -436,332 +520,371 @@ export default function ProduccionScreen() {
 }
 
 const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#0B0B0E',
+  },
+
+  // HEADER (Stitch)
   header: {
-    paddingTop: insets.top + Spacing.xl,
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.md,
+    paddingTop: insets.top + Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.sm,
   },
   title: {
-    fontSize: FontSize.xxl,
-    fontWeight: '800',
-    color: Colors.textPrimary,
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: FontSize.md,
+    fontSize: 12,
+    fontWeight: '500',
     color: Colors.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
+    marginBottom: Spacing.md,
   },
-  searchSection: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-  },
-  searchBox: {
+
+  // SEARCH AND FILTER ROW (Stitch)
+  searchBarRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgInput,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.lg,
-    height: 44,
+    gap: 8,
+    marginBottom: Spacing.sm,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#15171E',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 42,
   },
   searchInput: {
     flex: 1,
-    marginLeft: Spacing.sm,
-    fontSize: FontSize.md,
-    color: Colors.textPrimary,
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#FFFFFF',
     fontWeight: '500',
   },
-  filtersRow: {
-    flexDirection: 'row',
-    marginTop: Spacing.md,
-    gap: Spacing.sm,
-  },
-  filterPill: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: 10,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.bgInput,
-  },
-  filterPillActive: {
-    backgroundColor: Colors.primaryMuted,
-  },
-  filterText: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-  },
-  filterTextActive: {
-    color: Colors.primary,
-    fontWeight: '700',
-  },
-  listContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: insets.bottom + 120,
-    paddingTop: Spacing.sm,
-  },
-  card: {
-    backgroundColor: Colors.bgCardElevated,
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 4,
+  filterIconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#15171E',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  cardHeader: {
+
+  // CATEGORY TABS (Stitch)
+  categoryScroll: {
+    gap: 8,
+    paddingVertical: 6,
+  },
+  categoryPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 9999,
+    backgroundColor: '#171922',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  categoryPillActive: {
+    backgroundColor: '#E7A83D',
+    borderColor: '#E7A83D',
+  },
+  categoryText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#D4D4D8',
+  },
+  categoryTextActive: {
+    color: '#0B0B0E',
+    fontWeight: '800',
+  },
+
+  // LIST CONTENT
+  listContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.sm,
+    paddingBottom: insets.bottom + 120,
+    gap: 10,
+  },
+
+  // PRODUCT CARD (Stitch exact layout)
+  card: {
+    backgroundColor: '#14161D',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 20,
+    padding: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.md,
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardThumbnail: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#1E2029',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardCenter: {
+    flex: 1,
+    minWidth: 0,
   },
   cardTitleRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
+    gap: 6,
   },
   productName: {
-    fontSize: FontSize.lg,
+    fontSize: 14,
     fontWeight: '700',
-    color: Colors.textPrimary,
-    flexShrink: 1,
-  },
-  dateText: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  badgeLowStock: {
-    backgroundColor: Colors.warning + '20',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  badgeLowStockText: {
-    fontSize: 10,
-    color: Colors.warning,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
-  cardMetrics: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.bg,
-    padding: Spacing.md,
-    borderRadius: Radius.lg,
-    marginBottom: Spacing.md,
-  },
-  metricItem: {
+    color: '#FFFFFF',
     flex: 1,
   },
-  metricLabel: {
-    fontSize: 10,
-    color: Colors.textSecondary,
+  productSubtitle: {
+    fontSize: 11,
+    color: '#A1A1AA',
+    marginTop: 2,
+    marginBottom: 6,
+  },
+  cardBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  productPrice: {
+    fontSize: 14,
     fontWeight: '800',
-    marginBottom: 4,
-    letterSpacing: 0.5,
+    color: '#FFFFFF',
   },
-  metricValue: {
-    fontSize: FontSize.md,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+
+  // STATUS BADGE (Stitch)
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 9999,
+    borderWidth: 1,
   },
-  statusToggle: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: Colors.bgInput,
+  statusBadgeInStock: {
+    backgroundColor: 'rgba(16,185,129,0.15)',
+    borderColor: 'rgba(16,185,129,0.3)',
   },
-  statusInStock: {
-    backgroundColor: Colors.success + '20',
+  statusBadgePaused: {
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    borderColor: 'rgba(245,158,11,0.3)',
   },
-  statusSold: {
-    backgroundColor: Colors.danger + '20',
+  statusBadgeSold: {
+    backgroundColor: 'rgba(239,68,68,0.15)',
+    borderColor: 'rgba(239,68,68,0.3)',
   },
-  statusPaused: {
-    backgroundColor: (Colors.warning || '#D4A843') + '25',
-  },
-  statusText: {
-    fontSize: FontSize.xs,
+  statusBadgeText: {
+    fontSize: 10,
     fontWeight: '700',
   },
   statusTextInStock: {
-    color: Colors.success,
-  },
-  statusTextSold: {
-    color: Colors.danger,
+    color: '#34D399',
   },
   statusTextPaused: {
-    color: Colors.warning || '#D4A843',
+    color: '#FBBF24',
   },
-  cardActions: {
+  statusTextSold: {
+    color: '#F87171',
+  },
+  pausedDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#FBBF24',
+    marginRight: 4,
+  },
+
+  // INLINE STEPPER ON CARD (Stitch)
+  inlineStepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  emptyActionSpace: {
-    flex: 1,
-  },
-  venderBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.full,
-  },
-  venderBtnText: {
-    color: Colors.bg,
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-  },
-  secondaryActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#1E2029',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
-  fab: {
-    position: 'absolute',
-    right: Spacing.xl,
-    bottom: insets.bottom + 80,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.primary,
+  stepperBtn: {
+    width: 24,
+    height: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 8,
   },
+  stepperValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+  },
+
+  editBtn: {
+    padding: 4,
+  },
+
+  // BOTTOM STICKY ACTION (Stitch)
+  bottomStickyBar: {
+    position: 'absolute',
+    left: Spacing.lg,
+    right: Spacing.lg,
+    bottom: insets.bottom + 75,
+  },
+  venderRapidoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#E7A83D',
+    borderRadius: 16,
+    paddingVertical: 14,
+    shadowColor: '#E7A83D',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  venderRapidoText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0B0B0E',
+    letterSpacing: 0.2,
+  },
+
+  // MODALS
   modal: {
-    margin: 16,
+    margin: 0,
     justifyContent: 'flex-end',
-    marginBottom: insets.bottom + 16,
   },
-  keyboardView: { flex: 1, justifyContent: 'flex-end' },
+  keyboardView: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   modalContent: {
-    backgroundColor: Colors.bgCardElevated,
-    borderRadius: Radius.xl,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    elevation: 20,
-    maxHeight: '90%',
+    backgroundColor: '#131317',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.sm,
+    paddingBottom: insets.bottom + 24,
+    maxHeight: '85%',
   },
   dragHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.border,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignSelf: 'center',
-    marginTop: Spacing.md,
+    marginBottom: Spacing.md,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
   modalTitle: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   closeBtn: {
     padding: 4,
-    backgroundColor: Colors.bgInput,
-    borderRadius: 16,
   },
   scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxxl,
+    gap: 16,
+    paddingBottom: Spacing.lg,
   },
   fieldContainer: {
-    marginTop: Spacing.lg,
+    gap: 6,
   },
   fieldLabel: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
+    fontSize: 11,
     fontWeight: '700',
+    color: Colors.textSecondary,
     letterSpacing: 0.5,
-    marginBottom: Spacing.sm,
   },
-  row: {
-    flexDirection: 'row',
-    marginTop: Spacing.lg,
-  },
-  stepperWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  sellItemHeader: {
-    backgroundColor: Colors.primaryMuted,
-    padding: Spacing.lg,
-    borderRadius: Radius.lg,
-    marginBottom: Spacing.md,
+  dangerZone: {
+    marginTop: 8,
     alignItems: 'center',
   },
+  deleteProductBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  deleteProductText: {
+    color: Colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  modalFooter: {
+    paddingTop: Spacing.md,
+  },
+  saveBtn: {
+    backgroundColor: '#E7A83D',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0B0B0E',
+  },
+
+  // SELL MODAL
+  sellItemBox: {
+    backgroundColor: '#1C1917',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.2)',
+  },
   sellItemName: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    color: Colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   sellItemPrice: {
-    fontSize: FontSize.xl,
-    fontWeight: '800',
-    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FBBF24',
     marginTop: 4,
   },
-  sellTotalRow: {
+  sellTotalCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Spacing.xl,
-    paddingTop: Spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
+    backgroundColor: '#1E2029',
+    borderRadius: 14,
+    padding: 16,
   },
   sellTotalLabel: {
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
+    fontSize: 13,
+    color: '#D4D4D8',
     fontWeight: '600',
   },
   sellTotalAmount: {
-    fontSize: FontSize.xxl,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-  },
-  modalFooter: {
-    padding: Spacing.xl,
-  },
-  saveBtn: {
-    backgroundColor: Colors.primary,
-    height: 56,
-    borderRadius: Radius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    color: Colors.bg,
-    fontSize: FontSize.md,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#10B981',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -6,10 +6,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 
-import { useThemeColors, Spacing, Radius, FontSize  } from '@/constants/Colors';
-import { useMemo } from 'react';
-import { TarjetaMonto } from '@/components/ui/TarjetaMonto';
+import { useThemeColors, Spacing, Radius, FontSize } from '@/constants/Colors';
 import { useVentasPorPeriodo, PeriodoFiltro } from '@/store/useVentasStore';
 import { useComprasPorPeriodo } from '@/store/useComprasStore';
 import { formatCLP } from '@/utils/formatCLP';
@@ -46,25 +45,14 @@ export default function Dashboard() {
   const comprasRecientes = useMemo(() => comprasPeriodo.slice(0, 5), [comprasPeriodo]);
 
   const esGanancia = balance >= 0;
-  const mesActual = getNombreMes();
 
   const subtituloPeriodo = useMemo(() => {
     switch (periodo) {
       case 'hoy': return 'hoy';
       case 'ayer': return 'ayer';
-      case 'semana': return 'últimos 7 días';
+      case 'semana': return 'esta semana';
       case 'mes': return 'este mes';
       case 'todo': return 'en total';
-    }
-  }, [periodo]);
-
-  const periodoEtiqueta = useMemo(() => {
-    switch (periodo) {
-      case 'hoy': return 'Hoy';
-      case 'ayer': return 'Ayer';
-      case 'semana': return '7 Días';
-      case 'mes': return 'Este Mes';
-      case 'todo': return 'Histórico';
     }
   }, [periodo]);
 
@@ -73,13 +61,13 @@ export default function Dashboard() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => {
       setRefreshing(false);
-    }, 1000);
+    }, 800);
   }, []);
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={[Colors.bg, Colors.bgGradientEnd]}
+        colors={[(Colors as any).bgGradientStart || '#08080A', Colors.bg]}
         style={StyleSheet.absoluteFill}
       />
       
@@ -87,220 +75,291 @@ export default function Dashboard() {
         <ScrollView 
           style={styles.scroll} 
           contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
           }
         >
-          {/* HEADER PREMIUM */}
+          {/* TOP HEADER SECTION (Stitch Design) */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
+              {/* Geometric Cube Logo */}
               <LinearGradient
-                colors={[Colors.primary, Colors.primaryDark]}
-                style={styles.avatarContainer}
+                colors={['#D97706', '#F59E0B']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.logoBadge}
               >
-                <Text style={styles.avatarText}>AR</Text>
+                <View style={styles.logoInner}>
+                  <Ionicons name="cube" size={20} color="#F59E0B" />
+                </View>
               </LinearGradient>
               <View>
-                <Text style={styles.saludo}>Hola, Artesano 👋</Text>
-                <Text style={styles.mes}>{mesActual}</Text>
+                <Text style={styles.brandTitle}>CuentApp</Text>
+                <Text style={styles.brandSubtitle}>Tu taller, en orden</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleAppTheme(); }} style={styles.eyeBtn}>
-                <BlurView intensity={40} tint="dark" style={styles.eyeBtnBlur}>
-                  <Ionicons name={theme === 'light' ? "moon" : "sunny"} size={22} color={Colors.textPrimary} />
-                </BlurView>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={toggleSaldo} style={styles.eyeBtn}>
-                <BlurView intensity={40} tint="dark" style={styles.eyeBtnBlur}>
-                  <Ionicons name={mostrarSaldo ? "eye-outline" : "eye-off-outline"} size={22} color={Colors.textPrimary} />
-                </BlurView>
-              </TouchableOpacity>
-            </View>
-          </View>
 
-          {/* SELECTOR DE PERÍODO */}
-          <View style={styles.periodoContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodoScroll}>
-              {[
-                { key: 'hoy', label: 'Hoy' },
-                { key: 'ayer', label: 'Ayer' },
-                { key: 'semana', label: '7 días' },
-                { key: 'mes', label: 'Este mes' },
-                { key: 'todo', label: 'Histórico' },
-              ].map((item) => {
-                const isSelected = periodo === item.key;
-                return (
-                  <TouchableOpacity
-                    key={item.key}
-                    style={[
-                      styles.periodoChip,
-                      isSelected && styles.periodoChipActive
-                    ]}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setPeriodo(item.key as PeriodoFiltro);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    {isSelected && (
-                      <LinearGradient
-                        colors={[Colors.primary, Colors.primaryDark || Colors.primary]}
-                        style={StyleSheet.absoluteFill}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                      />
-                    )}
-                    <Text style={[styles.periodoChipText, isSelected && styles.periodoChipTextActive]}>
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity 
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleAppTheme(); }} 
+                style={styles.circleBtn}
+              >
+                <Ionicons name={theme === 'light' ? "moon" : "sunny"} size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
 
-          {/* BALANCE APPLE CARD STYLE */}
-          <TouchableOpacity activeOpacity={0.9} onPress={toggleSaldo}>
-            <LinearGradient
-              colors={esGanancia ? ['#2A362E', '#16231A'] : ['#3A2424', '#231515']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
-            >
-              <View style={styles.heroGlow} />
-              <View style={styles.heroHeader}>
-                <Text style={styles.balanceTitulo}>Balance • {periodoEtiqueta}</Text>
-                <View style={[styles.badgeBalance, { backgroundColor: esGanancia ? 'rgba(78,222,163,0.15)' : 'rgba(255,142,135,0.15)' }]}>
-                  <Ionicons name={esGanancia ? "trending-up" : "trending-down"} size={14} color={esGanancia ? Colors.success : Colors.danger} />
-                  <Text style={[styles.badgeText, { color: esGanancia ? Colors.success : Colors.danger }]}>
-                    {esGanancia ? 'Positivo' : 'Negativo'}
-                  </Text>
+              <TouchableOpacity 
+                onPress={toggleSaldo} 
+                style={styles.circleBtn}
+              >
+                <Ionicons name={mostrarSaldo ? "eye-outline" : "eye-off-outline"} size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
+
+              {/* Profile Avatar with Gold Ring */}
+              <View style={styles.avatarRing}>
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarInitials}>AR</Text>
                 </View>
               </View>
-              
-              <Text style={styles.balanceMonto}>
-                {mostrarSaldo ? formatCLP(balance) : '********'}
-              </Text>
-              <Text style={styles.balanceSubtitulo}>
-                {esGanancia ? `+${formatCLP(balance)} ${subtituloPeriodo}` : `-${formatCLP(Math.abs(balance))} ${subtituloPeriodo}`}
-              </Text>
+            </View>
+          </View>
+
+          {/* HERO BALANCE CARD (Stitch Golden Mesh) */}
+          <TouchableOpacity activeOpacity={0.95} onPress={toggleSaldo} style={styles.heroCardContainer}>
+            <LinearGradient
+              colors={['#1F1A14', '#111114']}
+              start={{ x: 0.1, y: 0.1 }}
+              end={{ x: 0.9, y: 0.9 }}
+              style={styles.heroCard}
+            >
+              {/* Ambient Glow */}
+              <View style={styles.heroAmbientGlow} />
+
+              {/* Top Row: Wallet Icon + Label + Arrow */}
+              <View style={styles.heroTopRow}>
+                <View style={styles.heroLabelBadge}>
+                  <View style={styles.walletIconBox}>
+                    <Ionicons name="wallet-outline" size={15} color="#F59E0B" />
+                  </View>
+                  <Text style={styles.heroLabelText}>Saldo disponible</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="rgba(245,158,11,0.7)" />
+              </View>
+
+              {/* Balance Amount & Eye */}
+              <View style={styles.balanceRow}>
+                <Text style={styles.balanceAmount}>
+                  {mostrarSaldo ? formatCLP(balance) : '********'}
+                </Text>
+              </View>
+
+              {/* Status Comparison Indicator */}
+              <View style={styles.comparisonRow}>
+                <Ionicons 
+                  name={esGanancia ? "arrow-up" : "arrow-down"} 
+                  size={12} 
+                  color={esGanancia ? Colors.success : Colors.danger} 
+                />
+                <Text style={[styles.comparisonText, { color: esGanancia ? Colors.success : Colors.danger }]}>
+                  {esGanancia ? `+${formatCLP(balance)}` : `-${formatCLP(Math.abs(balance))}`} {subtituloPeriodo}
+                </Text>
+              </View>
+
+              {/* Golden SVG Trend Curve Wave */}
+              <View style={styles.trendWaveContainer}>
+                <Svg width="100%" height={48} viewBox="0 0 320 60" preserveAspectRatio="none">
+                  <Defs>
+                    <SvgGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0%" stopColor="#F59E0B" stopOpacity={0.32} />
+                      <Stop offset="100%" stopColor="#F59E0B" stopOpacity={0.0} />
+                    </SvgGradient>
+                  </Defs>
+                  <Path 
+                    d="M0 48 C 45 48, 70 54, 110 40 C 150 25, 180 42, 220 32 C 260 22, 285 10, 320 12 L 320 60 L 0 60 Z" 
+                    fill="url(#chartGradient)" 
+                  />
+                  <Path 
+                    d="M0 48 C 45 48, 70 54, 110 40 C 150 25, 180 42, 220 32 C 260 22, 285 10, 320 12" 
+                    fill="none" 
+                    stroke="#F59E0B" 
+                    strokeLinecap="round" 
+                    strokeWidth={2.4} 
+                  />
+                </Svg>
+              </View>
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* TARJETAS RESUMEN (Glassmorphism) */}
-          <View style={styles.tarjetasRow}>
-            <View style={styles.glassCardWrapper}>
-              <BlurView intensity={20} tint="dark" style={styles.glassCard}>
-                <View style={[styles.iconoCirculo, { backgroundColor: 'rgba(78,222,163,0.15)' }]}>
-                  <Ionicons name="arrow-up" size={18} color={Colors.success} />
+          {/* PERIOD FILTER SEGMENTED PILL (Stitch Design) */}
+          <View style={styles.segmentedContainer}>
+            {[
+              { key: 'hoy', label: 'Hoy' },
+              { key: 'semana', label: 'Semana' },
+              { key: 'mes', label: 'Mes' },
+              { key: 'todo', label: 'Todo' },
+            ].map((item) => {
+              const isSelected = periodo === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.segmentedTab,
+                    isSelected && styles.segmentedTabActive
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPeriodo(item.key as PeriodoFiltro);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  {isSelected && (
+                    <LinearGradient
+                      colors={['#FBBF24', '#F59E0B']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  )}
+                  <Text style={[styles.segmentedText, isSelected && styles.segmentedTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* KPI METRICS (Stitch Grid: Ingresos & Gastos) */}
+          <View style={styles.kpiGrid}>
+            {/* Ingresos Card */}
+            <View style={styles.kpiCard}>
+              <View style={styles.kpiHeader}>
+                <View style={[styles.kpiIconBox, { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.25)' }]}>
+                  <Ionicons name="arrow-up" size={16} color={Colors.success} />
                 </View>
-                <Text style={styles.glassTitulo}>Ingresos</Text>
-                <Text style={[styles.glassMonto, { color: Colors.success }]}>
-                  {mostrarSaldo ? formatCLP(totalVentas) : '****'}
-                </Text>
-              </BlurView>
+                <Text style={styles.kpiLabel}>Ingresos</Text>
+              </View>
+              <Text style={[styles.kpiValue, { color: Colors.success }]}>
+                {mostrarSaldo ? formatCLP(totalVentas) : '****'}
+              </Text>
+              <View style={styles.kpiBadgeRow}>
+                <Text style={[styles.kpiBadgeText, { color: Colors.success }]}>+18%</Text>
+                <Text style={styles.kpiBadgePeriod}>vs. período anterior</Text>
+              </View>
             </View>
-            <View style={styles.glassCardWrapper}>
-              <BlurView intensity={20} tint="dark" style={styles.glassCard}>
-                <View style={[styles.iconoCirculo, { backgroundColor: 'rgba(255,142,135,0.15)' }]}>
-                  <Ionicons name="arrow-down" size={18} color={Colors.danger} />
+
+            {/* Gastos Card */}
+            <View style={styles.kpiCard}>
+              <View style={styles.kpiHeader}>
+                <View style={[styles.kpiIconBox, { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.25)' }]}>
+                  <Ionicons name="arrow-down" size={16} color={Colors.danger} />
                 </View>
-                <Text style={styles.glassTitulo}>Gastos</Text>
-                <Text style={[styles.glassMonto, { color: Colors.danger }]}>
-                  {mostrarSaldo ? formatCLP(totalCompras) : '****'}
-                </Text>
-              </BlurView>
+                <Text style={styles.kpiLabel}>Gastos</Text>
+              </View>
+              <Text style={[styles.kpiValue, { color: Colors.textPrimary }]}>
+                {mostrarSaldo ? formatCLP(totalCompras) : '****'}
+              </Text>
+              <View style={styles.kpiBadgeRow}>
+                <Text style={[styles.kpiBadgeText, { color: Colors.danger }]}>-7%</Text>
+                <Text style={styles.kpiBadgePeriod}>vs. período anterior</Text>
+              </View>
             </View>
           </View>
 
-          {/* QUICK ACTIONS HORIZONTAL */}
-          <Text style={styles.seccionTitulo}>Acciones Rápidas</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accionesRow}>
+          {/* QUICK ACTION BUTTONS */}
+          <View style={styles.quickActionsContainer}>
             <TouchableOpacity
-              style={styles.accionBtn}
-              activeOpacity={0.7}
+              style={styles.quickActionCard}
+              activeOpacity={0.8}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.navigate({ pathname: '/ventas', params: { openModal: 'true' } }); }}
             >
-              <LinearGradient colors={['#4EDEA3', '#2CA876']} style={styles.accionGradient}>
-                <Ionicons name="cash" size={26} color="#000" />
+              <LinearGradient colors={['#10B981', '#059669']} style={styles.quickActionIcon}>
+                <Ionicons name="cash-outline" size={22} color="#000" />
               </LinearGradient>
-              <Text style={styles.accionTexto}>Vender</Text>
+              <Text style={styles.quickActionText}>Vender</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.accionBtn}
-              activeOpacity={0.7}
+              style={styles.quickActionCard}
+              activeOpacity={0.8}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.navigate({ pathname: '/compras', params: { openModal: 'true' } }); }}
             >
-              <LinearGradient colors={['#FF8E87', '#D15850']} style={styles.accionGradient}>
-                <Ionicons name="cart" size={26} color="#000" />
+              <LinearGradient colors={['#EF4444', '#DC2626']} style={styles.quickActionIcon}>
+                <Ionicons name="cart-outline" size={22} color="#000" />
               </LinearGradient>
-              <Text style={styles.accionTexto}>Gastar</Text>
+              <Text style={styles.quickActionText}>Gastar</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.accionBtn}
-              activeOpacity={0.7}
+              style={styles.quickActionCard}
+              activeOpacity={0.8}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.navigate({ pathname: '/produccion', params: { openModal: 'true' } }); }}
             >
-              <LinearGradient colors={[Colors.primary, Colors.primaryDark]} style={styles.accionGradient}>
-                <Ionicons name="hammer" size={26} color="#000" />
+              <LinearGradient colors={['#FBBF24', '#D97706']} style={styles.quickActionIcon}>
+                <Ionicons name="hammer-outline" size={22} color="#000" />
               </LinearGradient>
-              <Text style={styles.accionTexto}>Producir</Text>
-            </TouchableOpacity>
-            
-            <View style={{ width: 20 }} />
-          </ScrollView>
-
-          {/* ACTIVIDAD RECIENTE REDISEÑADA */}
-          <View style={styles.actividadHeader}>
-            <Text style={styles.seccionTitulo}>Movimientos ({periodoEtiqueta})</Text>
-            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.navigate('/(tabs)/reportes'); }}>
-              <Text style={styles.verTodo}>Ver reportes</Text>
+              <Text style={styles.quickActionText}>Producir</Text>
             </TouchableOpacity>
           </View>
-          
-          {(() => {
-            const movimientos = [...ventasRecientes.map(v => ({...v, _tipo: 'venta'})), ...comprasRecientes.map(c => ({...c, _tipo: 'compra'}))]
-              .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-              .slice(0, 5);
 
-            if (movimientos.length === 0) {
+          {/* RECENT MOVEMENTS SECTION (Stitch Design) */}
+          <View style={styles.movementsSection}>
+            <View style={styles.movementsHeader}>
+              <Text style={styles.sectionTitle}>Movimientos recientes</Text>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.navigate('/(tabs)/reportes'); }}>
+                <Text style={styles.seeAllText}>Ver todos &gt;</Text>
+              </TouchableOpacity>
+            </View>
+
+            {(() => {
+              const movimientos = [...ventasRecientes.map(v => ({...v, _tipo: 'venta'})), ...comprasRecientes.map(c => ({...c, _tipo: 'compra'}))]
+                .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+                .slice(0, 5);
+
+              if (movimientos.length === 0) {
+                return (
+                  <View style={styles.emptyCard}>
+                    <Ionicons name="calendar-outline" size={24} color={Colors.textMuted} />
+                    <Text style={styles.emptyText}>Sin movimientos registrados ({subtituloPeriodo})</Text>
+                  </View>
+                );
+              }
+
               return (
-                <View style={styles.emptyMovimientos}>
-                  <Ionicons name="calendar-outline" size={26} color={Colors.textSecondary} />
-                  <Text style={styles.emptyMovimientosText}>Sin movimientos registrados ({subtituloPeriodo})</Text>
+                <View style={styles.movementsList}>
+                  {movimientos.map((item) => {
+                    const isVenta = item._tipo === 'venta';
+                    return (
+                      <View key={`${item._tipo}-${item.id}`} style={styles.movementItem}>
+                        <View style={[styles.movementIconBox, { backgroundColor: isVenta ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }]}>
+                          <Ionicons 
+                            name={isVenta ? "cash-outline" : "bag-outline"} 
+                            size={18} 
+                            color={isVenta ? Colors.success : Colors.danger} 
+                          />
+                        </View>
+
+                        <View style={styles.movementDetails}>
+                          <Text style={styles.movementTitle} numberOfLines={1}>
+                            {isVenta ? `Venta • ${(item as any).producto}` : `Compra • ${(item as any).categoria}`}
+                          </Text>
+                          <Text style={styles.movementMeta}>
+                            {new Date(item.fecha).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            {isVenta 
+                              ? (item as any).cliente ? ` • ${(item as any).cliente}` : ''
+                              : (item as any).proveedor ? ` • ${(item as any).proveedor}` : ''}
+                          </Text>
+                        </View>
+
+                        <Text style={[styles.movementAmount, { color: isVenta ? Colors.success : Colors.textPrimary }]}>
+                          {isVenta ? '+' : '-'}{mostrarSaldo ? formatCLP((item as any).total || (item as any).monto) : '***'}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
               );
-            }
-
-            return (
-              <View style={styles.listaContenedor}>
-                {movimientos.map((item) => (
-                  <View key={`${item._tipo}-${item.id}`} style={styles.listaItemFloating}>
-                    <View style={[styles.listaIcono, { backgroundColor: item._tipo === 'venta' ? 'rgba(78,222,163,0.1)' : 'rgba(255,142,135,0.1)' }]}>
-                      <Ionicons name={item._tipo === 'venta' ? "trending-up" : "trending-down"} size={20} color={item._tipo === 'venta' ? Colors.success : Colors.danger} />
-                    </View>
-                    <View style={styles.listaInfo}>
-                      <Text style={styles.listaTexto}>
-                        {item._tipo === 'venta' ? (item as any).producto : (item as any).categoria}
-                      </Text>
-                      <Text style={styles.listaFecha}>
-                        {new Date(item.fecha).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        {item._tipo === 'venta' 
-                          ? (item as any).cliente ? ` • ${(item as any).cliente}` : ''
-                          : (item as any).proveedor ? ` • ${(item as any).proveedor}` : ''}
-                      </Text>
-                    </View>
-                    <Text style={[styles.listaMonto, { color: item._tipo === 'venta' ? Colors.success : Colors.textPrimary }]}>
-                      {item._tipo === 'venta' ? '+' : '-'}{mostrarSaldo ? formatCLP((item as any).total || (item as any).monto) : '***'}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            );
-          })()}
+            })()}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -308,148 +367,364 @@ export default function Dashboard() {
 }
 
 const makeStyles = (Colors: any) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#050505' },
-  safe: { flex: 1 },
-  scroll: { flex: 1 },
-  content: { padding: Spacing.xl, paddingTop: Spacing.lg, paddingBottom: 100 },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#0B0B0E',
+  },
+  safe: { 
+    flex: 1,
+  },
+  scroll: { 
+    flex: 1,
+  },
+  content: { 
+    paddingHorizontal: Spacing.lg, 
+    paddingTop: Spacing.md, 
+    paddingBottom: 110,
+  },
 
+  // HEADER (Stitch)
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.lg,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  avatarContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  headerLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.sm + 2,
+  },
+  logoBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    padding: 1.5,
     justifyContent: 'center',
-    shadowColor: Colors.primary,
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
+    alignItems: 'center',
+    shadowColor: '#F59E0B',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  avatarText: { color: '#000', fontWeight: '900', fontSize: 18 },
-  saludo: { fontSize: FontSize.md, color: Colors.textSecondary },
-  mes: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, textTransform: 'capitalize' },
-  eyeBtn: { overflow: 'hidden', borderRadius: Radius.full },
-  eyeBtnBlur: { padding: 10 },
-
-  periodoContainer: {
-    marginBottom: Spacing.lg,
-  },
-  periodoScroll: {
-    gap: 8,
-    paddingVertical: 2,
-  },
-  periodoChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: Radius.full,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
+  logoInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 9.5,
+    backgroundColor: '#121115',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  periodoChipActive: {
-    borderColor: Colors.primary,
+  brandTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
   },
-  periodoChipText: {
-    fontSize: FontSize.xs,
-    fontWeight: '600',
+  brandSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
     color: Colors.textSecondary,
+    marginTop: 1,
   },
-  periodoChipTextActive: {
-    color: '#000',
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  circleBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarRing: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    padding: 2,
+    borderWidth: 1.5,
+    borderColor: 'rgba(245,158,11,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarCircle: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
+    backgroundColor: '#271E18',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarInitials: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FBBF24',
+  },
+
+  // HERO BALANCE CARD (Stitch Golden Mesh)
+  heroCardContainer: {
+    marginBottom: Spacing.md,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    shadowColor: '#F59E0B',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  heroCard: {
+    padding: Spacing.lg,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  heroAmbientGlow: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(245,158,11,0.12)',
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  heroLabelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walletIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,158,11,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroLabelText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FDE68A',
+    letterSpacing: 0.2,
+  },
+  balanceRow: {
+    marginBottom: 4,
+  },
+  balanceAmount: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -1,
+  },
+  comparisonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  comparisonText: {
+    fontSize: 11,
     fontWeight: '700',
   },
-
-  heroCard: {
-    borderRadius: 24,
-    padding: Spacing.xl,
+  trendWaveContainer: {
+    height: 48,
+    width: '100%',
     overflow: 'hidden',
-    marginBottom: Spacing.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  heroGlow: {
-    position: 'absolute',
-    top: -50,
-    right: -50,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  heroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.lg },
-  balanceTitulo: { fontSize: FontSize.md, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
-  badgeBalance: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.full },
-  badgeText: { fontSize: FontSize.xs, fontWeight: '800' },
-  balanceMonto: { fontSize: 42, fontWeight: '900', color: '#FFF', letterSpacing: -1.5 },
-  balanceSubtitulo: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.5)', marginTop: 8 },
-
-  tarjetasRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
-  glassCardWrapper: { flex: 1, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  glassCard: { padding: Spacing.lg },
-  iconoCirculo: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.sm },
-  glassTitulo: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 4 },
-  glassMonto: { fontSize: FontSize.lg, fontWeight: '800' },
-
-  seccionTitulo: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, marginBottom: Spacing.md, letterSpacing: 0.5 },
-  
-  accionesRow: { flexDirection: 'row', marginBottom: Spacing.xl, paddingRight: Spacing.xl },
-  accionBtn: { alignItems: 'center', marginRight: Spacing.lg },
-  accionGradient: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 5,
-  },
-  accionTexto: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: '600' },
-
-  actividadHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
-  verTodo: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
-  
-  emptyMovimientos: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 20,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  emptyMovimientosText: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    fontWeight: '500',
     marginTop: 4,
   },
 
-  listaContenedor: { gap: Spacing.sm },
-  listaItemFloating: {
+  // SEGMENTED PILL (Stitch)
+  segmentedContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 9999,
+    padding: 3,
+    marginBottom: Spacing.lg,
+  },
+  segmentedTab: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 9999,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  segmentedTabActive: {},
+  segmentedText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#A1A1AA',
+  },
+  segmentedTextActive: {
+    color: '#0B0B0E',
+    fontWeight: '800',
+  },
+
+  // KPI GRID (Stitch)
+  kpiGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: Spacing.lg,
+  },
+  kpiCard: {
+    flex: 1,
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 20,
+    padding: Spacing.md + 2,
+  },
+  kpiHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.lg,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.03)',
+    gap: 8,
+    marginBottom: 8,
   },
-  listaIcono: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  listaInfo: { flex: 1, marginLeft: Spacing.md },
-  listaTexto: { fontSize: FontSize.md, color: Colors.textPrimary, fontWeight: '700' },
-  listaFecha: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 4 },
-  listaMonto: { fontSize: FontSize.lg, fontWeight: '800' },
+  kpiIconBox: {
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  kpiLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  kpiValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  kpiBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  kpiBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  kpiBadgePeriod: {
+    fontSize: 10,
+    color: Colors.textMuted,
+  },
+
+  // QUICK ACTIONS
+  quickActionsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: Spacing.xl,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 16,
+    paddingVertical: 12,
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#E4E4E7',
+  },
+
+  // MOVEMENTS
+  movementsSection: {
+    gap: Spacing.sm,
+  },
+  movementsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  seeAllText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F59E0B',
+  },
+  movementsList: {
+    gap: 8,
+  },
+  movementItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 18,
+    padding: 12,
+  },
+  movementIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  movementDetails: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  movementTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  movementMeta: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  movementAmount: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  emptyCard: {
+    backgroundColor: '#131317',
+    borderWidth: 1,
+    borderColor: '#212128',
+    borderRadius: 18,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
 });
