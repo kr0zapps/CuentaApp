@@ -74,19 +74,18 @@ export default function ProduccionScreen() {
     
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (editId) {
-      const existing = items.find(i => i.id === editId);
       updateItem(editId, {
         producto: form.producto.trim(),
         cantidad: cantidad,
         precioVenta: precio,
-        enStock: existing ? existing.enStock : true,
+        enStock: cantidad > 0,
       });
     } else {
       addItem({
         producto: form.producto.trim(),
         cantidad: cantidad,
         precioVenta: precio,
-        enStock: true,
+        enStock: cantidad > 0,
       });
     }
     
@@ -101,7 +100,7 @@ export default function ProduccionScreen() {
       producto: item.producto,
       cantidad: item.cantidad,
       precioVenta: item.precioVenta,
-      enStock: true,
+      enStock: item.cantidad > 0,
     });
     useToastStore.getState().showToast('Producto duplicado', 'success');
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -147,7 +146,7 @@ export default function ProduccionScreen() {
   const filteredItems = useMemo(() => {
     let result = items;
     if (filterMode === 'en_stock') {
-      result = result.filter(i => i.enStock);
+      result = result.filter(i => i.enStock !== false && i.cantidad > 0);
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -196,21 +195,38 @@ export default function ProduccionScreen() {
           </View>
           <View style={[styles.metricItem, { alignItems: 'flex-end' }]}>
             <Text style={styles.metricLabel}>ESTADO</Text>
-            <TouchableOpacity 
-              style={[styles.statusToggle, item.enStock ? styles.statusInStock : styles.statusSold]}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                toggleStock(item.id);
-              }}>
-              <Text style={[styles.statusText, item.enStock ? styles.statusTextInStock : styles.statusTextSold]}>
-                {item.enStock ? 'Disponible' : 'Agotado'}
-              </Text>
-            </TouchableOpacity>
+            {(() => {
+              const isAgotado = item.cantidad <= 0;
+              const isDisponible = !isAgotado && item.enStock !== false;
+              return (
+                <TouchableOpacity 
+                  style={[
+                    styles.statusToggle, 
+                    isAgotado ? styles.statusSold : (isDisponible ? styles.statusInStock : styles.statusPaused)
+                  ]}
+                  onPress={() => {
+                    if (isAgotado) {
+                      useToastStore.getState().showToast('Producto con 0 stock. Edítalo para reponer unidades.', 'error');
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                      return;
+                    }
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    toggleStock(item.id);
+                  }}>
+                  <Text style={[
+                    styles.statusText, 
+                    isAgotado ? styles.statusTextSold : (isDisponible ? styles.statusTextInStock : styles.statusTextPaused)
+                  ]}>
+                    {isAgotado ? 'Agotado' : (isDisponible ? 'Disponible' : 'Pausado')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         </View>
 
         <View style={styles.cardActions}>
-          {item.enStock && item.cantidad > 0 ? (
+          {item.enStock !== false && item.cantidad > 0 ? (
             <TouchableOpacity 
               style={styles.venderBtn}
               onPress={() => {
@@ -567,6 +583,9 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   statusSold: {
     backgroundColor: Colors.danger + '20',
   },
+  statusPaused: {
+    backgroundColor: (Colors.warning || '#D4A843') + '25',
+  },
   statusText: {
     fontSize: FontSize.xs,
     fontWeight: '700',
@@ -576,6 +595,9 @@ const makeStyles = (Colors: any, insets: any) => StyleSheet.create({
   },
   statusTextSold: {
     color: Colors.danger,
+  },
+  statusTextPaused: {
+    color: Colors.warning || '#D4A843',
   },
   cardActions: {
     flexDirection: 'row',

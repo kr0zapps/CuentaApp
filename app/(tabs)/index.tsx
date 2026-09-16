@@ -10,8 +10,8 @@ import * as Haptics from 'expo-haptics';
 import { useThemeColors, Spacing, Radius, FontSize  } from '@/constants/Colors';
 import { useMemo } from 'react';
 import { TarjetaMonto } from '@/components/ui/TarjetaMonto';
-import { useVentasDelMes, useTotalVentasMes } from '@/store/useVentasStore';
-import { useComprasDelMes, useTotalComprasMes } from '@/store/useComprasStore';
+import { useVentasPorPeriodo, PeriodoFiltro } from '@/store/useVentasStore';
+import { useComprasPorPeriodo } from '@/store/useComprasStore';
 import { formatCLP } from '@/utils/formatCLP';
 import { useThemeStore } from '@/store/useThemeStore';
 
@@ -23,6 +23,7 @@ export default function Dashboard() {
   const Colors = useThemeColors();
   const styles = useMemo(() => makeStyles(Colors), [Colors]);
   const [mostrarSaldo, setMostrarSaldo] = useState(true);
+  const [periodo, setPeriodo] = useState<PeriodoFiltro>('mes');
 
   const theme = useThemeStore((s) => s.theme);
   const toggleAppTheme = useThemeStore((s) => s.toggleTheme);
@@ -34,15 +35,38 @@ export default function Dashboard() {
     setMostrarSaldo(!mostrarSaldo);
   };
 
-  const totalCompras = useTotalComprasMes();
-  const totalVentas = useTotalVentasMes();
+  const ventasPeriodo = useVentasPorPeriodo(periodo);
+  const comprasPeriodo = useComprasPorPeriodo(periodo);
+
+  const totalVentas = useMemo(() => ventasPeriodo.reduce((sum, v) => sum + v.total, 0), [ventasPeriodo]);
+  const totalCompras = useMemo(() => comprasPeriodo.reduce((sum, c) => sum + c.monto, 0), [comprasPeriodo]);
   const balance = totalVentas - totalCompras;
 
-  const ventasRecientes = useVentasDelMes().slice(0, 3);
-  const comprasRecientes = useComprasDelMes().slice(0, 3);
+  const ventasRecientes = useMemo(() => ventasPeriodo.slice(0, 5), [ventasPeriodo]);
+  const comprasRecientes = useMemo(() => comprasPeriodo.slice(0, 5), [comprasPeriodo]);
 
   const esGanancia = balance >= 0;
   const mesActual = getNombreMes();
+
+  const subtituloPeriodo = useMemo(() => {
+    switch (periodo) {
+      case 'hoy': return 'hoy';
+      case 'ayer': return 'ayer';
+      case 'semana': return 'últimos 7 días';
+      case 'mes': return 'este mes';
+      case 'todo': return 'en total';
+    }
+  }, [periodo]);
+
+  const periodoEtiqueta = useMemo(() => {
+    switch (periodo) {
+      case 'hoy': return 'Hoy';
+      case 'ayer': return 'Ayer';
+      case 'semana': return '7 Días';
+      case 'mes': return 'Este Mes';
+      case 'todo': return 'Histórico';
+    }
+  }, [periodo]);
 
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
@@ -95,6 +119,47 @@ export default function Dashboard() {
             </View>
           </View>
 
+          {/* SELECTOR DE PERÍODO */}
+          <View style={styles.periodoContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodoScroll}>
+              {[
+                { key: 'hoy', label: 'Hoy' },
+                { key: 'ayer', label: 'Ayer' },
+                { key: 'semana', label: '7 días' },
+                { key: 'mes', label: 'Este mes' },
+                { key: 'todo', label: 'Histórico' },
+              ].map((item) => {
+                const isSelected = periodo === item.key;
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[
+                      styles.periodoChip,
+                      isSelected && styles.periodoChipActive
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setPeriodo(item.key as PeriodoFiltro);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    {isSelected && (
+                      <LinearGradient
+                        colors={[Colors.primary, Colors.primaryDark || Colors.primary]}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                    )}
+                    <Text style={[styles.periodoChipText, isSelected && styles.periodoChipTextActive]}>
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
           {/* BALANCE APPLE CARD STYLE */}
           <TouchableOpacity activeOpacity={0.9} onPress={toggleSaldo}>
             <LinearGradient
@@ -105,7 +170,7 @@ export default function Dashboard() {
             >
               <View style={styles.heroGlow} />
               <View style={styles.heroHeader}>
-                <Text style={styles.balanceTitulo}>Balance Total</Text>
+                <Text style={styles.balanceTitulo}>Balance • {periodoEtiqueta}</Text>
                 <View style={[styles.badgeBalance, { backgroundColor: esGanancia ? 'rgba(78,222,163,0.15)' : 'rgba(255,142,135,0.15)' }]}>
                   <Ionicons name={esGanancia ? "trending-up" : "trending-down"} size={14} color={esGanancia ? Colors.success : Colors.danger} />
                   <Text style={[styles.badgeText, { color: esGanancia ? Colors.success : Colors.danger }]}>
@@ -118,7 +183,7 @@ export default function Dashboard() {
                 {mostrarSaldo ? formatCLP(balance) : '********'}
               </Text>
               <Text style={styles.balanceSubtitulo}>
-                {esGanancia ? `+${formatCLP(balance)} este mes` : `-${formatCLP(Math.abs(balance))} este mes`}
+                {esGanancia ? `+${formatCLP(balance)} ${subtituloPeriodo}` : `-${formatCLP(Math.abs(balance))} ${subtituloPeriodo}`}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -189,20 +254,30 @@ export default function Dashboard() {
           </ScrollView>
 
           {/* ACTIVIDAD RECIENTE REDISEÑADA */}
-          {(ventasRecientes.length > 0 || comprasRecientes.length > 0) && (
-            <>
-              <View style={styles.actividadHeader}>
-                <Text style={styles.seccionTitulo}>Últimos Movimientos</Text>
-                <TouchableOpacity onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
-                  <Text style={styles.verTodo}>Ver todo</Text>
-                </TouchableOpacity>
-              </View>
-              
+          <View style={styles.actividadHeader}>
+            <Text style={styles.seccionTitulo}>Movimientos ({periodoEtiqueta})</Text>
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.navigate('/(tabs)/reportes'); }}>
+              <Text style={styles.verTodo}>Ver reportes</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {(() => {
+            const movimientos = [...ventasRecientes.map(v => ({...v, _tipo: 'venta'})), ...comprasRecientes.map(c => ({...c, _tipo: 'compra'}))]
+              .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+              .slice(0, 5);
+
+            if (movimientos.length === 0) {
+              return (
+                <View style={styles.emptyMovimientos}>
+                  <Ionicons name="calendar-outline" size={26} color={Colors.textSecondary} />
+                  <Text style={styles.emptyMovimientosText}>Sin movimientos registrados ({subtituloPeriodo})</Text>
+                </View>
+              );
+            }
+
+            return (
               <View style={styles.listaContenedor}>
-                {[...ventasRecientes.map(v => ({...v, _tipo: 'venta'})), ...comprasRecientes.map(c => ({...c, _tipo: 'compra'}))]
-                  .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-                  .slice(0, 5)
-                  .map((item, i) => (
+                {movimientos.map((item) => (
                   <View key={`${item._tipo}-${item.id}`} style={styles.listaItemFloating}>
                     <View style={[styles.listaIcono, { backgroundColor: item._tipo === 'venta' ? 'rgba(78,222,163,0.1)' : 'rgba(255,142,135,0.1)' }]}>
                       <Ionicons name={item._tipo === 'venta' ? "trending-up" : "trending-down"} size={20} color={item._tipo === 'venta' ? Colors.success : Colors.danger} />
@@ -212,9 +287,10 @@ export default function Dashboard() {
                         {item._tipo === 'venta' ? (item as any).producto : (item as any).categoria}
                       </Text>
                       <Text style={styles.listaFecha}>
+                        {new Date(item.fecha).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         {item._tipo === 'venta' 
-                          ? (item as any).cliente || 'Sin cliente'
-                          : (item as any).proveedor || 'Sin proveedor'}
+                          ? (item as any).cliente ? ` • ${(item as any).cliente}` : ''
+                          : (item as any).proveedor ? ` • ${(item as any).proveedor}` : ''}
                       </Text>
                     </View>
                     <Text style={[styles.listaMonto, { color: item._tipo === 'venta' ? Colors.success : Colors.textPrimary }]}>
@@ -223,8 +299,8 @@ export default function Dashboard() {
                   </View>
                 ))}
               </View>
-            </>
-          )}
+            );
+          })()}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -241,7 +317,7 @@ const makeStyles = (Colors: any) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatarContainer: {
@@ -260,6 +336,37 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   mes: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, textTransform: 'capitalize' },
   eyeBtn: { overflow: 'hidden', borderRadius: Radius.full },
   eyeBtnBlur: { padding: 10 },
+
+  periodoContainer: {
+    marginBottom: Spacing.lg,
+  },
+  periodoScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  periodoChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  periodoChipActive: {
+    borderColor: Colors.primary,
+  },
+  periodoChipText: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  periodoChipTextActive: {
+    color: '#000',
+    fontWeight: '700',
+  },
 
   heroCard: {
     borderRadius: 24,
@@ -313,6 +420,23 @@ const makeStyles = (Colors: any) => StyleSheet.create({
   actividadHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   verTodo: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
   
+  emptyMovimientos: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  emptyMovimientosText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+
   listaContenedor: { gap: Spacing.sm },
   listaItemFloating: {
     flexDirection: 'row',

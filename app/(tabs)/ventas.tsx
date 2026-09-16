@@ -47,7 +47,7 @@ export default function VentasScreen() {
   
   const { ventas, addVenta, removeVenta } = useVentasStore();
   const produccionStore = useProduccionStore();
-  const itemsStock = produccionStore.items.filter((i) => i.enStock);
+  const itemsStock = produccionStore.items.filter((i) => i.enStock !== false && i.cantidad > 0);
   const totalMes = useTotalVentasMes();
 
   const [searchQuery, setSearchQuery] = useState('');

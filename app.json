@@ -27,6 +27,9 @@
       "expo-router",
       "expo-font"
     ],
+    "experiments": {
+      "baseUrl": "/CuentaApp"
+    },
     "extra": {
       "router": {},
       "eas": {
