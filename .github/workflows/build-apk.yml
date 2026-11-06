@@ -1,4 +1,4 @@
-name: Build Android APK (EAS)
+name: Build Android APK (Local en GitHub - Sin Cola)
 
 on:
   push:
@@ -8,11 +8,17 @@ on:
 
 jobs:
   build-apk:
-    name: Build Preview APK
+    name: Build Preview APK Local
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,5 +36,12 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
-      - name: Build Android APK
-        run: eas build --platform android --profile preview --non-interactive
+      - name: Build Android APK (Local en Runner de GitHub)
+        run: eas build --platform android --profile preview --local --output ./cuentapp.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CuentApp-APK
+          path: ./cuentapp.apk
+          if-no-files-found: error
